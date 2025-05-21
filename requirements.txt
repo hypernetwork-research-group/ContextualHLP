@@ -1,0 +1,9 @@
+torch==2.7.0
+torch-geometric==2.6.1
+gdown==5.2.0
+matplotlib==3.10.3
+matplotlib-inline==0.1.7
+tqdm==4.67.1
+seaborn==0.13.2
+tensorboard==2.19.0
+tensorboard-data-server==0.7.2
