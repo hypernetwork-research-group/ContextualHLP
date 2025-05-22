@@ -7,3 +7,5 @@ tqdm==4.67.1
 seaborn==0.13.2
 tensorboard==2.19.0
 tensorboard-data-server==0.7.2
+standard-imghdr
+scikit-learn
