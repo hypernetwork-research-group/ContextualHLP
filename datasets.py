@@ -130,6 +130,8 @@ class CHLPBaseDataset(InMemoryDataset, ABC):
             data_list = [data for data in data_list if self.pre_filter(data)]
         if self.pre_transform is not None:
             data_list = [self.pre_transform(data) for data in data_list]
+        if self.transform is not None:
+            data_list = [self.transform(data) for data in data_list]
 
         self.save(data_list, self.processed_paths[0])
 
@@ -141,11 +143,12 @@ class CHLPBaseDataset(InMemoryDataset, ABC):
         edge_index_mask = torch.isin(self._data.edge_index[1], idx)
         edge_index = self._data.edge_index[:, edge_index_mask]
         _, edge_index[1] = edge_index[1].unique(return_inverse=True)
-        return HyperGraphData(
+        data = HyperGraphData(
             x=self._data.x,
             edge_index=edge_index,
             edge_attr=self._data.edge_attr[idx],
         )
+        return data
 
     def __len__(self) -> int:
         return self._data.edge_index[1].max().item() + 1

@@ -9,3 +9,4 @@ tensorboard==2.19.0
 tensorboard-data-server==0.7.2
 standard-imghdr
 scikit-learn
+lightning
