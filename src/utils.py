@@ -1,8 +1,7 @@
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve
-from datasets import HyperGraphData
-from datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, train_test_split, collate_fn
+from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, train_test_split, collate_fn, HyperGraphData
 from typing import Tuple
 from torch.utils.data import DataLoader
 
@@ -55,7 +54,7 @@ def load_and_prepare_data(
     mode: str,
     batch_size: int = 512,
     num_workers: int = 8
-) -> Tuple[DataLoader, DataLoader, object, int]:
+) -> Tuple[DataLoader, DataLoader, DataLoader, int]:
     
     datasets = {
         "IMDB": IMDBHypergraphDataset,
@@ -72,6 +71,8 @@ def load_and_prepare_data(
         transform_fn = transform_node_features
     elif mode == "edges":
         transform_fn = transform_edge_features
+    elif mode == "full":
+        transform_fn = None
     else:
         raise NotImplementedError(f"Mode '{mode}' non supportato")
 
@@ -105,4 +106,14 @@ def load_and_prepare_data(
         collate_fn=collate_fn
     )
 
-    return train_loader, val_loader, test_ds, dataset.num_features
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True,
+        collate_fn=collate_fn
+    )
+
+    return train_loader, val_loader, test_loader, dataset.num_features

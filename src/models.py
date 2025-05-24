@@ -2,11 +2,11 @@ from torch_geometric.nn import HypergraphConv
 import torch.nn as nn
 from torch_geometric.nn.aggr import MeanAggregation
 import lightning as L
-from datasets import HyperGraphData
+from .datasets import HyperGraphData
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score, roc_curve
 import numpy as np
-from utils import negative_sampling, sensivity_specificity_cutoff
+from .utils import negative_sampling, sensivity_specificity_cutoff
 from pytorch_lightning import LightningModule
 
 class Model(nn.Module):    
@@ -67,6 +67,7 @@ class LitCHLPModel(LightningModule):
         self.model = model
         self.lr = lr
         self.criterion = torch.nn.BCEWithLogitsLoss()
+        self.cutoff = None
     
     def training_step(self, batch, batch_idx):
         h = negative_sampling(batch)
@@ -88,6 +89,19 @@ class LitCHLPModel(LightningModule):
         self.log("val_accuracy", accuracy_score(y_true, (y_pred_np >= cutoff).astype(int)), prog_bar=True)
         self.log("val_precision", precision_score(y_true, (y_pred_np >= cutoff).astype(int), average='micro'), prog_bar=True)
         self.log("val_precision", precision_score(y_true, (y_pred_np >= cutoff).astype(int), average='micro'), prog_bar=True)
+        self.cutoff = cutoff
+    
+    def test_step(self, batch, batch_idx):
+        h = negative_sampling(batch)
+        y_pred = torch.sigmoid(self.model(h.x, h.edge_attr, h.edge_index))
+        loss = self.criterion(y_pred, h.y)
+        self.log("test_loss", loss, prog_bar=True)
+
+        y_true = h.y.cpu().numpy()
+        y_pred_np = y_pred.cpu().numpy()
+        self.log("test_roc_auc", roc_auc_score(y_true, y_pred_np), prog_bar=True)
+        self.log("test_accuracy", accuracy_score(y_true, (y_pred_np >= self.cutoff).astype(int)), prog_bar=True)
+        self.log("test_precision", precision_score(y_true, (y_pred_np >= self.cutoff).astype(int), average='micro'), prog_bar=True)
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)

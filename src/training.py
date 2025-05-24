@@ -3,8 +3,8 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from models import Model, LitCHLPModel
-
+from .models import Model, LitCHLPModel
+import torch
 
 def create_model(in_channels: int) -> LitCHLPModel:
     model = Model(
@@ -33,7 +33,7 @@ def run_training(lightning_model: LitCHLPModel,
     )
 
     trainer = Trainer(
-        max_epochs=10,
+        max_epochs=30,
         accelerator=accelerator,
         devices=devices,
         log_every_n_steps=1,
@@ -60,3 +60,18 @@ def run_training(lightning_model: LitCHLPModel,
     )
 
     trainer.fit(lightning_model, train_loader, val_loader)
+
+def run_test_and_save_results(model, test_loader, output_path="test_results.txt", device="cuda" if torch.cuda.is_available() else "cpu"):
+    model.eval()
+    model.to(device)
+
+    trainer = Trainer(accelerator=device, logger=False, enable_checkpointing=False)
+
+    results = trainer.test(model, dataloaders=test_loader, verbose=False)
+
+    with open(output_path, "w") as f:
+        f.write("=== Test Results ===\n")
+        for key, value in results[0].items():
+            f.write(f"{key}: {value:.4f}\n")
+    
+    print(f"Test results saved to: {output_path}")
