@@ -1,6 +1,6 @@
 # chmod +x run.sh
 
-EPOCHS=1200
+EPOCHS=800
 BATCH_SIZE=512
 NUM_WORKERS=8
 
