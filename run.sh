@@ -1,11 +1,14 @@
-# chmod +x run.sh
+#!/bin/bash
 
-EPOCHS=800
-BATCH_SIZE=512
+# chmod +x run.sh
+# source /path/to/venv/bin/activate
+
+EPOCHS=1200
+BATCH_SIZE=64
 NUM_WORKERS=8
 
-DATASETS=("IMDB" "COURSERA" "ARXIV")
-MODES=("baseline" "nodes" "edges" "full")
+DATASETS=("IMDB") # "COURSERA" "IMDB" "ARXIV"
+MODES=("baseline" "nodes" "edges" "full") # baseline" "nodes" "full" 
 
 for dataset in "${DATASETS[@]}"; do
   for mode in "${MODES[@]}"; do

@@ -22,10 +22,14 @@ def main():
         os.makedirs(checkpoint_dir)
         
     torch.save(model, f'{checkpoint_dir}/{args.mode}.pth')
+
+    if not os.path.exists(f'./results/{args.dataset}'):
+        os.makedirs(f'./results/{args.dataset}')
+
     run_test_and_save_results(
         model,
         test_loader=test_loader,
-        output_path=f"./results/{args.dataset}_{args.mode}_test_results.txt"
+        output_path=f"./results/{args.dataset}/{args.dataset}_{args.mode}_test_results.txt"
     )
 
 

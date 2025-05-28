@@ -4,6 +4,7 @@ from sklearn.metrics import roc_curve
 from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, train_test_split, collate_fn, HyperGraphData
 from typing import Tuple
 from torch.utils.data import DataLoader
+import random
 
 def sensivity_specificity_cutoff(y_true, y_score):
     fpr, tpr, thresholds = roc_curve(y_true, y_score)
@@ -13,7 +14,7 @@ def sensivity_specificity_cutoff(y_true, y_score):
 def negative_sampling(h: HyperGraphData):
     edge_index = h.edge_index.clone()
     edge_index[0] = torch.randint(0, h.num_nodes, (edge_index[1].shape[0], ), device=h.x.device)
-    h_edge_attr = torch.vstack((h.edge_attr, h.edge_attr))
+    h_edge_attr = torch.vstack((h.edge_attr, h.edge_attr[torch.randperm(h.edge_attr.shape[0])]))
     h.y = torch.vstack((
         torch.ones((h.edge_index[1].max() + 1, 1), device=h.x.device),
         torch.zeros((edge_index[1].max() + 1, 1), device=h.x.device),
@@ -27,6 +28,80 @@ def negative_sampling(h: HyperGraphData):
         y=h.y,
         num_nodes=h.num_nodes,
     )
+    return h_
+
+def alpha_beta_negative_sampling(h: HyperGraphData, alpha=0.8, beta=1):
+    edge_index = h.edge_index.clone()
+    print(h.edge_attr.shape)
+    real_edges = torch.arange(torch.max(edge_index[1]) + 1)
+    real_nodes = torch.arange(torch.max(edge_index[0]) + 1)
+    
+    y = [1] * len(real_edges)
+    fake_edges = []
+    sample_edges = []
+
+    fake_edge_id = real_edges[-1].item() + 1
+
+    edge_to_nodes = {}
+    for eid in real_edges:
+        nodes = edge_index[0][edge_index[1] == eid]
+        edge_to_nodes[eid.item()] = nodes
+
+    if alpha < 1.0:
+        for eid in real_edges:
+            nodes = edge_to_nodes[eid.item()]
+            num_nodes = nodes.size(0)
+            num_keep = max(1, round(alpha * num_nodes))
+            num_replace = max(1, round((1 - alpha) * num_nodes))
+            
+            for _ in range(beta):
+                sample_edges.append(eid.item())
+
+                perm = torch.randperm(num_nodes)
+                keep_nodes = nodes[perm[:num_keep]]
+
+                mask = torch.ones(len(real_nodes), dtype=torch.bool)
+                mask[keep_nodes] = False
+                available = real_nodes[mask]
+
+                if available.size(0) < num_replace:
+                    replace_nodes = available
+                else:
+                    idx = torch.randperm(available.size(0))[:num_replace]
+                    replace_nodes = available[idx]
+
+                new_nodes = torch.cat([keep_nodes, replace_nodes.to(keep_nodes.device)])
+
+                new_edge = torch.stack([
+                    new_nodes,
+                    torch.full_like(new_nodes, fake_edge_id)
+                ], dim=0)
+                fake_edges.append(new_edge)
+                y.append(0)
+
+                fake_edge_id += 1
+
+        if fake_edges:
+            fake_edge_index = torch.cat(fake_edges, dim=1)
+            final_edge_index = torch.cat([edge_index, fake_edge_index], dim=1)
+        else:
+            final_edge_index = edge_index
+
+        indices = torch.tensor(random.sample(sample_edges, len(sample_edges)))
+        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr[torch.tensor(indices)]])
+    else:
+        final_edge_index = torch.cat([edge_index, edge_index], dim=1)
+        indices = torch.randperm(h.edge_attr.size(0))
+        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr[torch.tensor(indices)]])
+
+    h_ = HyperGraphData(
+        x=h.x,
+        edge_index=final_edge_index,
+        edge_attr = final_edge_attr,
+        y=torch.tensor(y, dtype=torch.float).flatten(),
+        num_nodes=real_nodes.shape[0]
+    ).to(h.x.device)
+
     return h_
 
 def pre_transform(data: HyperGraphData):

@@ -3,15 +3,16 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import Model, LitCHLPModel
+from .models import Model, LitCHLPModel, FullModel
 import torch
+from torch_geometric.nn.aggr import MinAggregation, MeanAggregation
 
 def create_model(in_channels: int) -> LitCHLPModel:
     model = Model(
-        in_channels=in_channels,
-        hidden_channels=in_channels,
-        out_channels=1,
-        num_layers=1
+        in_channels,
+        in_channels,
+        1,
+        1,
     )
     lightning_model = LitCHLPModel(model)
     return lightning_model
@@ -26,19 +27,20 @@ def run_training(lightning_model: LitCHLPModel,
                  accelerator: str = 'gpu'):
     
     early_stop_callback = EarlyStopping(
-        monitor="val_loss",
+        monitor="running_val",
         patience=early_stopping_patience,
         verbose=True,
-        mode="min"
+        mode="min",
+        check_on_train_epoch_end=True
     )
 
     trainer = Trainer(
-        max_epochs=30,
+        max_epochs=15,
         accelerator=accelerator,
         devices=devices,
         log_every_n_steps=1,
-        callbacks=[early_stop_callback],
     )
+
     tuner = Tuner(trainer)
     lr_finder = tuner.lr_find(
         lightning_model,
