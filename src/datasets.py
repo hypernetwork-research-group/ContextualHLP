@@ -168,4 +168,8 @@ class COURSERAHypergraphDataset(CHLPBaseDataset):
     GDRIVE_ID = "1AVqUuVOpCFVG13-N3lUckYhIrk83WOSu"
     DATASET_NAME = "COURSERA"
 
+class PROVAHypergraphDataset(CHLPBaseDataset):
+    GDRIVE_ID = "1c8xTHLDKyF3idmGN2tiRES9GRJYw3cBC"
+    DATASET_NAME = "PROVA"
+
 torch.serialization.add_safe_globals([HyperGraphData])

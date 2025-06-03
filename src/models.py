@@ -6,7 +6,7 @@ from .datasets import HyperGraphData
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score, roc_curve
 import numpy as np
-from .utils import negative_sampling, sensivity_specificity_cutoff, alpha_beta_negative_sampling
+from .utils import negative_sampling, sensivity_specificity_cutoff, alpha_beta_negative_sampling, negative_samping_mix
 from pytorch_lightning import LightningModule
 from torch.nn import Dropout, Linear, LayerNorm, ReLU
 from torchmetrics.aggregation import RunningMean
@@ -176,14 +176,14 @@ class LitCHLPModel(LightningModule):
         self.metric = RunningMean(window=11)
     
     def training_step(self, batch, batch_idx):
-        h = alpha_beta_negative_sampling(batch, beta=3)
+        h = alpha_beta_negative_sampling(batch, alpha=0.8, beta=1)
         y_pred = self.model(h.x, h.edge_attr, h.edge_index).flatten()
         loss = self.criterion(y_pred, h.y.flatten())
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=False)
         return loss
     
     def validation_step(self, batch, batch_idx):
-        h = alpha_beta_negative_sampling(batch, beta=3)
+        h = alpha_beta_negative_sampling(batch, alpha=0.8, beta=1)
         y_pred = self.model(h.x, h.edge_attr, h.edge_index).flatten()
         loss = self.criterion(y_pred, h.y.flatten())
         self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=False)
@@ -215,7 +215,7 @@ class LitCHLPModel(LightningModule):
 
     
     def test_step(self, batch, batch_idx):
-        h = alpha_beta_negative_sampling(batch, beta=3)
+        h = alpha_beta_negative_sampling(batch, alpha=0.8, beta=1)
         y_pred = torch.sigmoid(self.model(h.x, h.edge_attr, h.edge_index).flatten())
 
         self.test_preds.append(y_pred.detach().cpu())

@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve
-from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, train_test_split, collate_fn, HyperGraphData
+from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, PROVAHypergraphDataset, train_test_split, collate_fn, HyperGraphData
 from typing import Tuple
 from torch.utils.data import DataLoader
 import random
@@ -32,7 +32,6 @@ def negative_sampling(h: HyperGraphData):
 
 def alpha_beta_negative_sampling(h: HyperGraphData, alpha=0.8, beta=1):
     edge_index = h.edge_index.clone()
-    print(h.edge_attr.shape)
     real_edges = torch.arange(torch.max(edge_index[1]) + 1)
     real_nodes = torch.arange(torch.max(edge_index[0]) + 1)
     
@@ -104,6 +103,84 @@ def alpha_beta_negative_sampling(h: HyperGraphData, alpha=0.8, beta=1):
 
     return h_
 
+def interpolate_negatives(positives, alpha_range=(0.3, 0.7)):
+    idx_perm = torch.randperm(positives.size(0))
+    alpha = torch.rand(positives.size(0), 1).to(positives.device)
+    alpha = alpha * (alpha_range[1] - alpha_range[0]) + alpha_range[0]
+    interpolated = positives * alpha + positives[idx_perm] * (1 - alpha)
+    return interpolated
+
+def negative_samping_mix(h: HyperGraphData, alpha=0.8, beta=1):
+    edge_index = h.edge_index.clone()
+    real_edges = torch.arange(torch.max(edge_index[1]) + 1)
+    real_nodes = torch.arange(torch.max(edge_index[0]) + 1)
+    
+    y = [1] * len(real_edges)
+    fake_edges = []
+    sample_edges = []
+
+    fake_edge_id = real_edges[-1].item() + 1
+
+    edge_to_nodes = {}
+    for eid in real_edges:
+        nodes = edge_index[0][edge_index[1] == eid]
+        edge_to_nodes[eid.item()] = nodes
+
+    if alpha < 1.0:
+        for eid in real_edges:
+            nodes = edge_to_nodes[eid.item()]
+            num_nodes = nodes.size(0)
+            num_keep = max(1, round(alpha * num_nodes))
+            num_replace = max(1, round((1 - alpha) * num_nodes))
+            
+            for _ in range(beta):
+                sample_edges.append(eid.item())
+
+                perm = torch.randperm(num_nodes)
+                keep_nodes = nodes[perm[:num_keep]]
+
+                mask = torch.ones(len(real_nodes), dtype=torch.bool)
+                mask[keep_nodes] = False
+                available = real_nodes[mask]
+
+                if available.size(0) < num_replace:
+                    replace_nodes = available
+                else:
+                    idx = torch.randperm(available.size(0))[:num_replace]
+                    replace_nodes = available[idx]
+
+                new_nodes = torch.cat([keep_nodes, replace_nodes.to(keep_nodes.device)])
+
+                new_edge = torch.stack([
+                    new_nodes,
+                    torch.full_like(new_nodes, fake_edge_id)
+                ], dim=0)
+                fake_edges.append(new_edge)
+                y.append(0)
+
+                fake_edge_id += 1
+
+        if fake_edges:
+            fake_edge_index = torch.cat(fake_edges, dim=1)
+            final_edge_index = torch.cat([edge_index, fake_edge_index], dim=1)
+        else:
+            final_edge_index = edge_index
+    else:
+        final_edge_index = torch.cat([edge_index, edge_index], dim=1)
+    
+    negative_embeddings = interpolate_negatives(h.edge_attr, alpha_range=(0.3, 0.7))
+    final_edge_attr = torch.vstack([h.edge_attr, negative_embeddings])
+
+    h_ = HyperGraphData(
+        x=h.x,
+        edge_index=final_edge_index,
+        edge_attr = final_edge_attr,
+        y=torch.tensor(y, dtype=torch.float).flatten(),
+        num_nodes=real_nodes.shape[0]
+    ).to(h.x.device)
+
+    return h_
+    
 def pre_transform(data: HyperGraphData):
     data.edge_index = data.edge_index[:, torch.isin(data.edge_index[1], (data.edge_index[1].bincount() > 1).nonzero())]
     unique, inverse = data.edge_index[1].unique(return_inverse=True)
@@ -134,7 +211,8 @@ def load_and_prepare_data(
     datasets = {
         "IMDB": IMDBHypergraphDataset,
         "COURSERA": COURSERAHypergraphDataset,
-        "ARXIV": ARXIVHypergraphDataset
+        "ARXIV": ARXIVHypergraphDataset,
+        "PROVA": PROVAHypergraphDataset
     }
 
     if dataset_name not in datasets:

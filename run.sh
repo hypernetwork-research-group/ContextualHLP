@@ -7,7 +7,7 @@ EPOCHS=1200
 BATCH_SIZE=64
 NUM_WORKERS=8
 
-DATASETS=("IMDB") # "COURSERA" "IMDB" "ARXIV"
+DATASETS=("PROVA") # "COURSERA" "IMDB" "ARXIV"
 MODES=("baseline" "nodes" "edges" "full") # baseline" "nodes" "full" 
 
 for dataset in "${DATASETS[@]}"; do
