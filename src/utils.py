@@ -25,7 +25,7 @@ def negative_sampling(h: HyperGraphData):
         x=h.x,
         edge_index=edge_index,
         edge_attr=h_edge_attr,
-        y=h.y,
+        y=h.y.flatten(),
         num_nodes=h.num_nodes,
     )
     return h_
