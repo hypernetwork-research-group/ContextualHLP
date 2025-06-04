@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve
-from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, PROVAHypergraphDataset, train_test_split, collate_fn, HyperGraphData
+from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, PROVAHypergraphDataset, PATENTHypergraphDataset, train_test_split, collate_fn, HyperGraphData
 from typing import Tuple
 from torch.utils.data import DataLoader
 import random
@@ -212,7 +212,8 @@ def load_and_prepare_data(
         "IMDB": IMDBHypergraphDataset,
         "COURSERA": COURSERAHypergraphDataset,
         "ARXIV": ARXIVHypergraphDataset,
-        "PROVA": PROVAHypergraphDataset
+        "PROVA": PROVAHypergraphDataset,
+        "PATENT": PATENTHypergraphDataset
     }
 
     if dataset_name not in datasets:

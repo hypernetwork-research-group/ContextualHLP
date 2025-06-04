@@ -172,4 +172,7 @@ class PROVAHypergraphDataset(CHLPBaseDataset):
     GDRIVE_ID = "1c8xTHLDKyF3idmGN2tiRES9GRJYw3cBC"
     DATASET_NAME = "PROVA"
 
+class PATENTHypergraphDataset(CHLPBaseDataset):
+    GDRIVE_ID = "1YxOuo1G9rtRVXpITzm8XLKxdb-hyjQ4P"
+    DATASET_NAME = "PATENT"
 torch.serialization.add_safe_globals([HyperGraphData])

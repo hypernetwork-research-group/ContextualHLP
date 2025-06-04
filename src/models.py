@@ -63,105 +63,6 @@ class Model(nn.Module):
         x = self.linear(x)
         return x
 
-class FullModel(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, aggregation=None, dropout: float = 0.3, activation=nn.LeakyReLU(0.5)):
-        super(FullModel, self).__init__()
-
-        self.activation = activation
-        self.aggregation = aggregation
-        self.dropout = Dropout(dropout)
-
-        # Edge features
-        self.edge_input_norm = LayerNorm(in_channels)
-        self.edge_input_linear = Linear(in_channels, hidden_channels)
-        self.edge_skip_connection = Linear(hidden_channels, hidden_channels)
-        self.edge_hgcn = HypergraphConv(hidden_channels, in_channels, use_attention=False)
-        self.edge_output_norm = LayerNorm(hidden_channels)
-
-        # Semantic features
-        self.node_input_norm = LayerNorm(in_channels)
-        self.node_input_linear = Linear(in_channels, hidden_channels)
-        self.node_skip_connection = Linear(hidden_channels, hidden_channels)
-        self.semantic_hgcn = HypergraphConv(hidden_channels, in_channels, use_attention=True)
-        self.semantic_output_norm = LayerNorm(hidden_channels)
-
-        # Structural features
-        self.structural_output_norm = LayerNorm(hidden_channels)
-        self.structural_hgcn = HypergraphConv(hidden_channels, in_channels, use_attention=True)
-        self.structural_skip_connection = Linear(hidden_channels, hidden_channels)
-
-        self.final_feature_norm = LayerNorm(in_channels)
-        self.node_feature_refiner = Linear(in_channels, in_channels)
-
-        self.edge_feature_refiner = Linear(hidden_channels, hidden_channels)
-        self.edge_refiner_norm = LayerNorm(hidden_channels)
-
-        # Again on the dual form
-        self.hgcn_final_norm = LayerNorm(hidden_channels)
-        self.hgcn_final = HypergraphConv(in_channels, in_channels, use_attention=False)
-
-        # MLP
-        self.mlp_input_norm = LayerNorm(in_channels)
-        self.mlp = nn.Sequential(
-            nn.Linear(hidden_channels, hidden_channels),
-            nn.LeakyReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_channels, hidden_channels),
-            nn.LeakyReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_channels, out_channels)
-        )
-    def forward(self, X_n: torch.Tensor, X_e: torch.Tensor, hyperedge_index: torch.Tensor, sigmoid: bool = False):
-        dual_hyperedge_index = hyperedge_index.flip(0)
-
-        # Edge features
-        X_e = self.edge_input_norm(X_e)
-        X_e = self.edge_input_linear(X_e)
-        X_e = self.activation(X_e)
-        X_e = self.dropout(X_e)
-        X_e = self.edge_hgcn(X_e, dual_hyperedge_index) + self.edge_skip_connection(X_e)
-
-        # Semantic features
-        X_n = self.node_input_norm(X_n)
-        X_n = self.node_input_linear(X_n)
-        X_n = self.activation(X_n)
-        X_n = self.dropout(X_n)
-        X_n_hgcn = self.semantic_hgcn(X_n, hyperedge_index, hyperedge_attr=X_e) + self.node_skip_connection(X_n)
-
-        # Structural features
-        with torch.random.fork_rng(devices=[], enabled=True):
-            torch.manual_seed(42)
-            X_str = torch.rand_like(X_n)
-        self.structural_output_norm(X_str)
-        X_str = self.activation(X_str)
-        X_str = self.dropout(X_str)
-        X_str_hgcn = self.structural_hgcn(X_str, hyperedge_index, hyperedge_attr=X_e) + self.structural_skip_connection(X_str)
-
-        # Fusion and refinement
-        X = X_str_hgcn + X_n_hgcn
-        X = self.final_feature_norm(X)
-        X = self.node_feature_refiner(X)
-        X = self.activation(X)
-        # print("X shape", X.shape)
-        X = self.aggregation(X[hyperedge_index[0]], hyperedge_index[1])
-        X_n_aggregated = X.clone()
-
-        X = X * X_e
-        X = self.edge_refiner_norm(X)
-        X = self.edge_feature_refiner(X)
-        X = self.activation(X)
-
-        # Again on the dual form
-        X = self.hgcn_final_norm(X)
-        X = self.hgcn_final(X, dual_hyperedge_index)
-        X = self.mlp_input_norm(X)
-        X_final = self.mlp(X)
-
-        if sigmoid:
-            X_final = torch.sigmoid(X_final)
-
-        return X_final
-
 class LitCHLPModel(LightningModule):
     def __init__(self, model, lr=1e-4):
         super().__init__()
@@ -176,14 +77,14 @@ class LitCHLPModel(LightningModule):
         self.metric = RunningMean(window=11)
     
     def training_step(self, batch, batch_idx):
-        h = alpha_beta_negative_sampling(batch, alpha=0.8, beta=1)
+        h = negative_sampling(batch)
         y_pred = self.model(h.x, h.edge_attr, h.edge_index).flatten()
         loss = self.criterion(y_pred, h.y.flatten())
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=False)
         return loss
     
     def validation_step(self, batch, batch_idx):
-        h = alpha_beta_negative_sampling(batch, alpha=0.8, beta=1)
+        h = negative_sampling(batch)
         y_pred = self.model(h.x, h.edge_attr, h.edge_index).flatten()
         loss = self.criterion(y_pred, h.y.flatten())
         self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=False)
@@ -215,7 +116,7 @@ class LitCHLPModel(LightningModule):
 
     
     def test_step(self, batch, batch_idx):
-        h = alpha_beta_negative_sampling(batch, alpha=0.8, beta=1)
+        h = negative_sampling(batch)
         y_pred = torch.sigmoid(self.model(h.x, h.edge_attr, h.edge_index).flatten())
 
         self.test_preds.append(y_pred.detach().cpu())

@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import Model, LitCHLPModel, FullModel
+from .models import Model, LitCHLPModel
 import torch
 from torch_geometric.nn.aggr import MinAggregation, MeanAggregation
 
