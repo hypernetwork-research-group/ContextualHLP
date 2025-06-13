@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import Model, LitCHLPModel
+from .models import Model, LitCHLPModel, FullModel
 import torch
 from torch_geometric.nn.aggr import MinAggregation, MeanAggregation
 
@@ -14,6 +14,13 @@ def create_model(in_channels: int) -> LitCHLPModel:
         1,
         1,
     )
+    # model = FullModel(
+    #     in_channels,
+    #     in_channels,
+    #     1,
+    #     1536,
+    #     MinAggregation(),
+    # )
     lightning_model = LitCHLPModel(model)
     return lightning_model
 

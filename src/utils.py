@@ -180,7 +180,91 @@ def negative_samping_mix(h: HyperGraphData, alpha=0.8, beta=1):
     ).to(h.x.device)
 
     return h_
-    
+
+def negative_samping_mix_2(h: HyperGraphData, alpha=0.8, beta=1, semantic_perturb_frac=0.5):
+    edge_index = h.edge_index.clone()
+    real_edges = torch.arange(torch.max(edge_index[1]) + 1)
+    real_nodes = torch.arange(torch.max(edge_index[0]) + 1)
+
+    y = [1] * len(real_edges)
+    fake_edges = []
+    fake_attrs = []
+
+    fake_edge_id = real_edges[-1].item() + 1
+
+    edge_to_nodes = {}
+    for eid in real_edges:
+        nodes = edge_index[0][edge_index[1] == eid]
+        edge_to_nodes[eid.item()] = nodes
+
+    if alpha < 1.0:
+        for eid in real_edges:
+            nodes = edge_to_nodes[eid.item()]
+            num_nodes = nodes.size(0)
+            num_keep = max(1, round(alpha * num_nodes))
+            num_replace = max(1, round((1 - alpha) * num_nodes))
+
+            for _ in range(beta):
+                perm = torch.randperm(num_nodes)
+                keep_nodes = nodes[perm[:num_keep]]
+
+                mask = torch.ones(len(real_nodes), dtype=torch.bool)
+                mask[keep_nodes] = False
+                available = real_nodes[mask]
+
+                if available.size(0) < num_replace:
+                    replace_nodes = available
+                else:
+                    idx = torch.randperm(available.size(0))[:num_replace]
+                    replace_nodes = available[idx]
+
+                new_nodes = torch.cat([keep_nodes, replace_nodes.to(keep_nodes.device)])
+
+                new_edge = torch.stack([
+                    new_nodes,
+                    torch.full_like(new_nodes, fake_edge_id)
+                ], dim=0)
+                fake_edges.append(new_edge)
+                fake_attrs.append(h.edge_attr[eid].unsqueeze(0))
+                y.append(0)
+                fake_edge_id += 1
+
+    num_semantic_fakes = int(len(real_edges) * semantic_perturb_frac)
+    idxs = torch.randperm(len(real_edges))[:num_semantic_fakes]
+    interpolated_embeddings = interpolate_negatives(h.edge_attr, alpha_range=(0.3, 0.7))
+
+    for i in idxs:
+        eid = real_edges[i]
+        nodes = edge_to_nodes[eid.item()]
+        new_edge = torch.stack([
+            nodes,
+            torch.full_like(nodes, fake_edge_id)
+        ], dim=0)
+        fake_edges.append(new_edge)
+        fake_attrs.append(interpolated_embeddings[i].unsqueeze(0))
+        y.append(0)
+        fake_edge_id += 1
+
+    if fake_edges:
+        fake_edge_index = torch.cat(fake_edges, dim=1)
+        final_edge_index = torch.cat([edge_index, fake_edge_index], dim=1)
+        fake_edge_attr = torch.cat(fake_attrs, dim=0)
+        final_edge_attr = torch.vstack([h.edge_attr, fake_edge_attr])
+    else:
+        final_edge_index = edge_index
+        final_edge_attr = h.edge_attr
+
+    h_ = HyperGraphData(
+        x=h.x,
+        edge_index=final_edge_index,
+        edge_attr=final_edge_attr,
+        y=torch.tensor(y, dtype=torch.float).flatten(),
+        num_nodes=real_nodes.shape[0]
+    ).to(h.x.device)
+
+    return h_
+
+
 def pre_transform(data: HyperGraphData):
     data.edge_index = data.edge_index[:, torch.isin(data.edge_index[1], (data.edge_index[1].bincount() > 1).nonzero())]
     unique, inverse = data.edge_index[1].unique(return_inverse=True)

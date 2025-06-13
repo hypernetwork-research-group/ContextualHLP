@@ -4,10 +4,11 @@ from src.utils import load_and_prepare_data
 import torch
 import os
 
+torch.backends.cudnn.benchmark = True
 def main():
     parser = argparse.ArgumentParser(description="Train a 3-model pipeline")
     parser.add_argument('--dataset', type=str, required=True, help='Name of the dataset to load')
-    parser.add_argument('--mode', type=str, default='default', help='Dataset loading mode')
+    parser.add_argument('--mode', type=str, default='baseline', help='Dataset loading mode')
     parser.add_argument('--epochs', type=int, default=1200, help='Maximum number of epochs')
     parser.add_argument('--batch_size', type=int, default=512, help='Batch size')
     parser.add_argument('--num_workers', type=int, default=8, help='Number of workers for DataLoader')
