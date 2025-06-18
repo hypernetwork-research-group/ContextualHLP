@@ -30,7 +30,7 @@ def negative_sampling(h: HyperGraphData):
     )
     return h_
 
-def alpha_beta_negative_sampling(h: HyperGraphData, alpha=0.8, beta=1):
+def alpha_beta_negative_sampling(h: HyperGraphData, alpha=0.8, beta=3):
     edge_index = h.edge_index.clone()
     real_edges = torch.arange(torch.max(edge_index[1]) + 1)
     real_nodes = torch.arange(torch.max(edge_index[0]) + 1)

@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
 
     train_loader, val_loader, test_loader, num_features = load_and_prepare_data(args.dataset, args.mode, args.batch_size, args.num_workers)
-    model = create_model(num_features)
+    model = create_model(num_features, train_loader.dataset.x.shape[0], args.mode)
     run_training(model, train_loader, val_loader, args.epochs)
 
     checkpoint_dir = f'./model_checkpoints/{args.dataset}'

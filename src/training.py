@@ -3,46 +3,50 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import Model, LitCHLPModel, FullModel
+from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeStruct, FullModel
 import torch
 from torch_geometric.nn.aggr import MinAggregation, MeanAggregation
+from pytorch_lightning.loggers import TensorBoardLogger
 
-def create_model(in_channels: int) -> LitCHLPModel:
-    model = Model(
-        in_channels,
-        in_channels,
-        1,
-        1,
-    )
-    # model = FullModel(
-    #     in_channels,
-    #     in_channels,
-    #     1,
-    #     1536,
-    #     MinAggregation(),
-    # )
-    lightning_model = LitCHLPModel(model)
-    return lightning_model
 
+def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
+    if mode == "baseline":
+        model = ModelBaseline(in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
+        return lightning_model
+    elif mode == "nodes":
+        model = ModelNodeStruct(num_nodes, in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
+        return lightning_model
+    elif mode == "edges":
+        model = ModelEdge(in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
+        return lightning_model
+    elif mode == "full":
+        model = FullModel(num_nodes, in_channels, 512, 1, 1)
+        lightning_model = LitCHLPModel(model)
+        return lightning_model
 
 def run_training(lightning_model: LitCHLPModel,
                  train_loader: DataLoader,
                  val_loader: DataLoader,
                  max_epochs: int = 1200,
-                 early_stopping_patience: int = 50,
+                 early_stopping_patience: int = 100,
                  devices: int = 1,
                  accelerator: str = 'gpu'):
     
+    logger = TensorBoardLogger("lightning_logs", name="CHLP")
+
     early_stop_callback = EarlyStopping(
         monitor="running_val",
         patience=early_stopping_patience,
         verbose=True,
         mode="min",
-        check_on_train_epoch_end=True
+        check_on_train_epoch_end=False
     )
 
     trainer = Trainer(
-        max_epochs=15,
+        max_epochs=50,
         accelerator=accelerator,
         devices=devices,
         log_every_n_steps=1,
@@ -65,7 +69,8 @@ def run_training(lightning_model: LitCHLPModel,
         accelerator=accelerator,
         devices=devices,
         log_every_n_steps=1,
-        callbacks=[early_stop_callback]
+        callbacks=[early_stop_callback],
+        logger=logger
     )
 
     trainer.fit(lightning_model, train_loader, val_loader)
