@@ -117,14 +117,14 @@ class ModelNodeStruct(nn.Module):
         self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
 
         for i in range(num_layers):
-            setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
-            setattr(self, f"hgconv_{i}", HypergraphConv(
-                hidden_channels,
-                hidden_channels,
-                use_attention=False,
-                concat=False,
-                heads=1
-            ))
+            # setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
+            # setattr(self, f"hgconv_{i}", HypergraphConv(
+            #     hidden_channels,
+            #     hidden_channels,
+            #     use_attention=False,
+            #     concat=False,
+            #     heads=1
+            # ))
             setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
                 hidden_channels,
@@ -139,9 +139,13 @@ class ModelNodeStruct(nn.Module):
         self.linear = nn.Linear(hidden_channels, out_channels)
 
     def forward(self, x, x_e, edge_index):
-        x_struct = self.x_struct.to(x.device)
-        x_struct = x_struct[torch.unique(edge_index[0])]
-        x_struct = normalize(x_struct, p=2, dim=1)
+        # x_struct = self.x_struct.to(x.device)
+        # x_struct = x_struct[torch.unique(edge_index[0])]
+        # x_struct = normalize(x_struct, p=2, dim=1)
+        # x_struct = self.in_norm(x_struct)
+        # x_struct = self.in_proj(x_struct)
+        # x_struct = self.activation(x_struct)
+        # x_struct = self.dropout(x_struct)
 
         x = normalize(x, p=2, dim=1)
         x = self.n_sem_norm(x)
@@ -149,22 +153,17 @@ class ModelNodeStruct(nn.Module):
         x = self.activation(x)
         x = self.dropout(x)
 
-        x_struct = self.in_norm(x_struct)
-        x_struct = self.in_proj(x_struct)
-        x_struct = self.activation(x_struct)
-        x_struct = self.dropout(x_struct)
 
         for i in range(self.num_layers):
-            n_norm = getattr(self, f"n_norm_{i}")
-            hgconv = getattr(self, f"hgconv_{i}")
+            # n_norm = getattr(self, f"n_norm_{i}")
+            # hgconv = getattr(self, f"hgconv_{i}")
+            # x_struct = n_norm(x_struct)
+            # x_struct = self.activation(hgconv(x_struct, edge_index))
             n_norm_llm = getattr(self, f"n_norm_{i}_llm")
             hgconv_llm = getattr(self, f"hgconv_{i}_llm")
-            x_struct = n_norm(x_struct)
-            x_struct = self.activation(hgconv(x_struct, edge_index))
             x = n_norm_llm(x)
             x = self.activation(hgconv_llm(x, edge_index))
         
-        x = x + x_struct
         x = self.aggr(x[edge_index[0]], edge_index[1])
         x = self.linear(x)
         return x

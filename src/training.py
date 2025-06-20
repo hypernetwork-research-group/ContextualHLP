@@ -30,12 +30,14 @@ def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
 def run_training(lightning_model: LitCHLPModel,
                  train_loader: DataLoader,
                  val_loader: DataLoader,
+                 mode: str,
+                 dataset: str,
                  max_epochs: int = 1200,
                  early_stopping_patience: int = 100,
                  devices: int = 1,
                  accelerator: str = 'gpu'):
     
-    logger = TensorBoardLogger("lightning_logs", name="CHLP")
+    logger = TensorBoardLogger("lightning_logs", name=f"CHLP_{dataset}_{mode}")
 
     early_stop_callback = EarlyStopping(
         monitor="running_val",

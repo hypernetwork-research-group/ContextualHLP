@@ -86,12 +86,14 @@ def alpha_beta_negative_sampling(h: HyperGraphData, alpha=0.8, beta=3):
         else:
             final_edge_index = edge_index
 
-        indices = torch.tensor(random.sample(sample_edges, len(sample_edges)))
-        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr[torch.tensor(indices)]])
+        # indices = torch.tensor(random.sample(sample_edges, len(sample_edges)))
+        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr[sample_edges]])
+
+        assert final_edge_attr.size(0) == final_edge_index[1].max() + 1, "Mismatch between edge attributes and edge indices"
     else:
         final_edge_index = torch.cat([edge_index, edge_index], dim=1)
-        indices = torch.randperm(h.edge_attr.size(0))
-        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr[torch.tensor(indices)]])
+        # indices = torch.randperm(h.edge_attr.size(0))
+        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr])
 
     h_ = HyperGraphData(
         x=h.x,
