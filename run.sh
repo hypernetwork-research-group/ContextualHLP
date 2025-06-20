@@ -6,8 +6,8 @@ EPOCHS=500
 BATCH_SIZE=16
 NUM_WORKERS=8
 
-DATASETS=("PATENT" "COURSERA" "PROVA" "ARXIV") # "PATENT" "COURSERA" "IMDB" "ARXIV" "PROVA" "PROVA" "ARXIV"
-MODES=("baseline" "nodes" "edges" "full") # "baseline" "nodes" "edges" "full"
+DATASETS=("COURSERA") # "PATENT" "COURSERA" "IMDB" "ARXIV" "PROVA" "PROVA" "ARXIV"
+MODES=("full") # "baseline" "nodes" "edges" "full"
 
 for dataset in "${DATASETS[@]}"; do
   for mode in "${MODES[@]}"; do

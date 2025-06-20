@@ -1,6 +1,6 @@
 from torch_geometric.nn import HypergraphConv
 import torch.nn as nn
-from torch_geometric.nn.aggr import MeanAggregation, SoftmaxAggregation
+from torch_geometric.nn.aggr import MeanAggregation, SoftmaxAggregation, MLPAggregation
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score, roc_curve
 import numpy as np
