@@ -48,10 +48,10 @@ def run_training(lightning_model: LitCHLPModel,
     )
 
     trainer = Trainer(
-        max_epochs=50,
+        max_epochs=200,
         accelerator=accelerator,
         devices=devices,
-        log_every_n_steps=1,
+        log_every_n_steps=10,
     )
 
     tuner = Tuner(trainer)

@@ -2,12 +2,12 @@
 
 # chmod +x run.sh
 
-EPOCHS=500
+EPOCHS=1000
 BATCH_SIZE=16
 NUM_WORKERS=8
 
-DATASETS=("COURSERA") # "PATENT" "COURSERA" "IMDB" "ARXIV" "PROVA" "PROVA" "ARXIV"
-MODES=("full") # "baseline" "nodes" "edges" "full"
+DATASETS=("PATENT" "COURSERA" "PROVA" "ARXIV")
+MODES=("full")
 
 for dataset in "${DATASETS[@]}"; do
   for mode in "${MODES[@]}"; do

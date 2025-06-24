@@ -1,6 +1,5 @@
-from torch_geometric.nn import HypergraphConv
+from torch_geometric.nn import HypergraphConv, TransformerConv
 import torch.nn as nn
-from torch_geometric.nn.aggr import MeanAggregation, SoftmaxAggregation, MLPAggregation
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score, roc_curve
 import numpy as np
@@ -168,6 +167,37 @@ class ModelNodeStruct(nn.Module):
         x = self.linear(x)
         return x
 
+class CrossAttentionAggregator(nn.Module):
+    def __init__(self, hidden_dim: int, num_heads: int = 4):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, batch_first=True)
+        self.norm = nn.LayerNorm(hidden_dim)
+
+    def forward(self, node_embeddings, hyperedge_embeddings, edge_index):
+        E = hyperedge_embeddings.size(0)
+        device = node_embeddings.device
+        D = node_embeddings.size(1)
+        grouped_nodes = [[] for _ in range(E)]
+        for i in range(edge_index.shape[1]):
+            n_id = edge_index[0, i].item()
+            e_id = edge_index[1, i].item()
+            grouped_nodes[e_id].append(n_id)
+
+        outputs = []
+        for e_id in range(E):
+            nodes = grouped_nodes[e_id]
+            if not nodes:
+                outputs.append(torch.zeros(D, device=device))
+                continue
+            node_feats = node_embeddings[nodes]
+            query = hyperedge_embeddings[e_id].unsqueeze(0).unsqueeze(0)
+            key_value = node_feats.unsqueeze(0)
+            attn_out, _ = self.attn(query, key_value, key_value)
+            outputs.append(attn_out.squeeze(0).squeeze(0))
+
+        return torch.stack(outputs)
+
+
 class FullModel(nn.Module):
     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
         super(FullModel, self).__init__()
@@ -194,54 +224,83 @@ class FullModel(nn.Module):
                 concat=False,
                 heads=4
             ))
+            setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
+
             setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
-                use_attention=True,
+                use_attention=False,
                 concat=False,
                 heads=4
             ))
+            setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
         self.num_layers = num_layers
         self.aggr = MinAggregation()
-        self.linear = nn.Linear(hidden_channels, out_channels)
+        # self.aggr = CrossAttentionAggregator(hidden_channels)
+        self.node_fusion = nn.Sequential(
+            nn.LayerNorm(hidden_channels * 2),
+            nn.Linear(hidden_channels * 2, hidden_channels),
+            nn.LeakyReLU(),
+            nn.LayerNorm(hidden_channels),
+        )
+        self.edge_fusion = nn.Sequential(
+            nn.LayerNorm(hidden_channels * 2),
+            nn.Linear(hidden_channels * 2, hidden_channels),
+            nn.LeakyReLU(),
+            nn.LayerNorm(hidden_channels),
+        )
+        self.linear = nn.Sequential(
+            nn.Linear(hidden_channels, hidden_channels),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_channels, hidden_channels),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_channels, out_channels)
+        )
 
     def forward(self, x, x_e, edge_index):
         x_struct = self.x_struct.to(x.device)
         x_struct = x_struct[torch.unique(edge_index[0])]
         x_struct = normalize(x_struct, p=2, dim=1)
+        # x_struct = self.in_norm(x_struct)
+        x_struct = self.in_proj(x_struct)
+        x_struct = self.activation(x_struct)
+        x_struct = self.dropout(x_struct)
 
         x = normalize(x, p=2, dim=1)
-        x = self.n_sem_norm(x)
+        # x = self.n_sem_norm(x)
         x = self.n_sem_proj(x)
         x = self.activation(x)
         x = self.dropout(x)
 
         x_e = normalize(x_e, p=2, dim=1)
-        x_e = self.e_norm(x_e)
+        # x_e = self.e_norm(x_e)
         x_e = self.e_proj(x_e)
         x_e = self.activation(x_e)
         x_e = self.dropout(x_e)
 
-        x_struct = self.in_norm(x_struct)
-        x_struct = self.in_proj(x_struct)
-        x_struct = self.activation(x_struct)
-        x_struct = self.dropout(x_struct)
-
         for i in range(self.num_layers):
             n_norm = getattr(self, f"n_norm_{i}")
             hgconv = getattr(self, f"hgconv_{i}")
+            skip = getattr(self, f"skip_struct_{i}")
+
             n_norm_llm = getattr(self, f"n_norm_{i}_llm")
             hgconv_llm = getattr(self, f"hgconv_{i}_llm")
+            skip_llm = getattr(self, f"skip_{i}")
+
             x_struct = n_norm(x_struct)
-            x_struct = self.activation(hgconv(x_struct, edge_index))
+            x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
+
             x = n_norm_llm(x)
-            x = self.activation(hgconv_llm(x, edge_index, hyperedge_attr=x_e))
+            x = self.activation(hgconv_llm(x, edge_index, hyperedge_attr=x_e)) + skip_llm(x)
         
-        x = x + x_struct
+        x = self.node_fusion(torch.cat([x_struct, x], dim=1))
         x = self.aggr(x[edge_index[0]], edge_index[1])
+        # x = self.aggr(x, x_e, edge_index)
+        x = self.edge_fusion(torch.cat([x, x_e], dim=1))
         x = self.linear(x)
         return x
+
 
 class LitCHLPModel(LightningModule):
     def __init__(self, model, lr=1e-4):
