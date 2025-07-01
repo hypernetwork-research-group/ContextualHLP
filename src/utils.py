@@ -1,10 +1,11 @@
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve
-from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, PROVAHypergraphDataset, PATENTHypergraphDataset, train_test_split, collate_fn, HyperGraphData
+from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, PATENTHypergraphDataset, train_test_split, collate_fn, HyperGraphData
 from typing import Tuple
 from torch.utils.data import DataLoader
 import random
+import torch.nn.functional as F
 
 def sensivity_specificity_cutoff(y_true, y_score):
     fpr, tpr, thresholds = roc_curve(y_true, y_score)
@@ -86,14 +87,14 @@ def alpha_beta_negative_sampling(h: HyperGraphData, alpha=0.8, beta=3):
         else:
             final_edge_index = edge_index
 
-        # indices = torch.tensor(random.sample(sample_edges, len(sample_edges)))
-        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr[sample_edges]])
+        indices = torch.tensor(random.sample(sample_edges, len(sample_edges)))
+        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr[indices]]) # Default: sample_edges
 
         assert final_edge_attr.size(0) == final_edge_index[1].max() + 1, "Mismatch between edge attributes and edge indices"
     else:
         final_edge_index = torch.cat([edge_index, edge_index], dim=1)
-        # indices = torch.randperm(h.edge_attr.size(0))
-        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr])
+        indices = torch.randperm(h.edge_attr.size(0))
+        final_edge_attr = torch.vstack([h.edge_attr, h.edge_attr[indices]])
 
     h_ = HyperGraphData(
         x=h.x,
@@ -298,7 +299,6 @@ def load_and_prepare_data(
         "IMDB": IMDBHypergraphDataset,
         "COURSERA": COURSERAHypergraphDataset,
         "ARXIV": ARXIVHypergraphDataset,
-        "PROVA": PROVAHypergraphDataset,
         "PATENT": PATENTHypergraphDataset
     }
 
@@ -312,6 +312,8 @@ def load_and_prepare_data(
     elif mode == "edges":
         transform_fn = transform_edge_features
     elif mode == "full":
+        transform_fn = None
+    elif mode == "node_semantic_node_structure":
         transform_fn = None
     else:
         raise NotImplementedError(f"Mode '{mode}' non supportato")
@@ -357,3 +359,18 @@ def load_and_prepare_data(
     )
 
     return train_loader, val_loader, test_loader, dataset.num_features
+
+def contrastive_loss(x_nodes_pos, x_e_pos, x_e_neg, temperature=0.07):
+    pos_sim = F.cosine_similarity(x_nodes_pos, x_e_pos).unsqueeze(1)
+
+    neg_sim = torch.mm(F.normalize(x_nodes_pos, dim=1), F.normalize(x_e_neg, dim=1).T)
+
+    logits = torch.cat([pos_sim, neg_sim], dim=1)
+
+    logits /= temperature
+
+    labels = torch.zeros(x_nodes_pos.size(0), dtype=torch.long, device=x_nodes_pos.device)
+
+    loss = F.cross_entropy(logits, labels)
+
+    return loss

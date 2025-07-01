@@ -3,11 +3,11 @@ import torch.nn as nn
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score, roc_curve
 import numpy as np
-from .utils import negative_sampling, sensivity_specificity_cutoff, alpha_beta_negative_sampling, negative_samping_mix, negative_samping_mix_2
+from .utils import negative_sampling, sensivity_specificity_cutoff, alpha_beta_negative_sampling, negative_samping_mix, negative_samping_mix_2, contrastive_loss
 from pytorch_lightning import LightningModule
 from torchmetrics.aggregation import RunningMean
 from torch.nn.functional import normalize
-from torch_geometric.nn import HypergraphConv, SoftmaxAggregation, MeanAggregation, MinAggregation
+from torch_geometric.nn import HypergraphConv, SoftmaxAggregation, MinAggregation, MulAggregation
 
 class ModelBaseline(nn.Module):    
     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
@@ -166,41 +166,10 @@ class ModelNodeStruct(nn.Module):
         x = self.aggr(x[edge_index[0]], edge_index[1])
         x = self.linear(x)
         return x
-
-class CrossAttentionAggregator(nn.Module):
-    def __init__(self, hidden_dim: int, num_heads: int = 4):
-        super().__init__()
-        self.attn = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, batch_first=True)
-        self.norm = nn.LayerNorm(hidden_dim)
-
-    def forward(self, node_embeddings, hyperedge_embeddings, edge_index):
-        E = hyperedge_embeddings.size(0)
-        device = node_embeddings.device
-        D = node_embeddings.size(1)
-        grouped_nodes = [[] for _ in range(E)]
-        for i in range(edge_index.shape[1]):
-            n_id = edge_index[0, i].item()
-            e_id = edge_index[1, i].item()
-            grouped_nodes[e_id].append(n_id)
-
-        outputs = []
-        for e_id in range(E):
-            nodes = grouped_nodes[e_id]
-            if not nodes:
-                outputs.append(torch.zeros(D, device=device))
-                continue
-            node_feats = node_embeddings[nodes]
-            query = hyperedge_embeddings[e_id].unsqueeze(0).unsqueeze(0)
-            key_value = node_feats.unsqueeze(0)
-            attn_out, _ = self.attn(query, key_value, key_value)
-            outputs.append(attn_out.squeeze(0).squeeze(0))
-
-        return torch.stack(outputs)
-
-
-class FullModel(nn.Module):
+    
+class SemanticStructModel(nn.Module):
     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
-        super(FullModel, self).__init__()
+        super(SemanticStructModel, self).__init__()
 
         self.x_struct = torch.randn(num_nodes, in_channels)
 
@@ -237,19 +206,13 @@ class FullModel(nn.Module):
             setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
         self.num_layers = num_layers
         self.aggr = MinAggregation()
-        # self.aggr = CrossAttentionAggregator(hidden_channels)
         self.node_fusion = nn.Sequential(
             nn.LayerNorm(hidden_channels * 2),
             nn.Linear(hidden_channels * 2, hidden_channels),
             nn.LeakyReLU(),
             nn.LayerNorm(hidden_channels),
         )
-        self.edge_fusion = nn.Sequential(
-            nn.LayerNorm(hidden_channels * 2),
-            nn.Linear(hidden_channels * 2, hidden_channels),
-            nn.LeakyReLU(),
-            nn.LayerNorm(hidden_channels),
-        )
+        
         self.linear = nn.Sequential(
             nn.Linear(hidden_channels, hidden_channels),
             nn.LeakyReLU(),
@@ -261,6 +224,299 @@ class FullModel(nn.Module):
     def forward(self, x, x_e, edge_index):
         x_struct = self.x_struct.to(x.device)
         x_struct = x_struct[torch.unique(edge_index[0])]
+        x_struct = normalize(x_struct, p=2, dim=1)
+        # x_struct = self.in_norm(x_struct)
+        x_struct = self.in_proj(x_struct)
+        x_struct = self.activation(x_struct)
+        x_struct = self.dropout(x_struct)
+
+        x = normalize(x, p=2, dim=1)
+        # x = self.n_sem_norm(x)
+        x = self.n_sem_proj(x)
+        x = self.activation(x)
+        x = self.dropout(x)
+
+        for i in range(self.num_layers):
+            n_norm = getattr(self, f"n_norm_{i}")
+            hgconv = getattr(self, f"hgconv_{i}")
+            skip = getattr(self, f"skip_struct_{i}")
+
+            n_norm_llm = getattr(self, f"n_norm_{i}_llm")
+            hgconv_llm = getattr(self, f"hgconv_{i}_llm")
+            skip_llm = getattr(self, f"skip_{i}")
+
+            x_struct = n_norm(x_struct)
+            x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
+
+            x = n_norm_llm(x)
+            x = self.activation(hgconv_llm(x, edge_index)) + skip_llm(x)
+        
+        x = self.node_fusion(torch.cat([x_struct, x], dim=1))
+        x = self.aggr(x[edge_index[0]], edge_index[1])
+        x = self.linear(x)
+        return x
+    
+class CrossAttentionAggregator(nn.Module):
+    def __init__(self, hidden_dim: int, num_heads: int = 4):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, batch_first=True)
+        self.norm = nn.LayerNorm(hidden_dim)
+
+    def forward(self, node_embeddings, hyperedge_embeddings, edge_index):
+        device = node_embeddings.device
+        D = node_embeddings.size(1)
+        E = hyperedge_embeddings.size(0)
+
+        grouped_nodes = [[] for _ in range(E)]
+        for i in range(edge_index.size(1)):
+            n_id = edge_index[0, i].item()
+            e_id = edge_index[1, i].item()
+            grouped_nodes[e_id].append(n_id)
+
+        max_len = max(len(nodi) for nodi in grouped_nodes) if grouped_nodes else 0
+        if max_len == 0:
+            return torch.zeros_like(hyperedge_embeddings)
+
+        node_batch = torch.zeros(E, max_len, D, device=device)
+        key_padding_mask = torch.ones(E, max_len, dtype=torch.bool, device=device)
+
+        for e_id, nodi in enumerate(grouped_nodes):
+            l = len(nodi)
+            if l > 0:
+                node_batch[e_id, :l, :] = node_embeddings[nodi]
+                key_padding_mask[e_id, :l] = False
+
+        query = hyperedge_embeddings.unsqueeze(1)
+
+        attn_out, _ = self.attn(query=query, key=node_batch, value=node_batch, key_padding_mask=key_padding_mask)
+        out = attn_out.squeeze(1)
+        out = self.norm(out)
+
+        return out
+
+class HyperedgeCrossAttentionFusion(nn.Module):
+    def __init__(self, hidden_channels, num_heads=4):
+        super().__init__()
+        self.mha = nn.MultiheadAttention(embed_dim=hidden_channels, num_heads=num_heads, batch_first=True)
+        self.norm = nn.LayerNorm(hidden_channels)
+        self.dropout = nn.Dropout(0.3)
+
+    def forward(self, node_agg, edge_feat):
+        node_agg = node_agg.unsqueeze(1)
+        edge_feat = edge_feat.unsqueeze(1)
+        
+        attn_output, _ = self.mha(query=node_agg, key=edge_feat, value=edge_feat)
+        out = self.norm(node_agg + self.dropout(attn_output))
+        return out.squeeze(1)
+
+
+# This is ok!
+
+# class FullModel(nn.Module):
+#     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
+#         super(FullModel, self).__init__()
+
+#         self.num_layers = num_layers
+#         self.dropout = nn.Dropout(0.3)
+#         self.activation = nn.LeakyReLU()
+
+#         self.x_struct = torch.randn(num_nodes, in_channels)
+
+#         # self.in_norm = nn.LayerNorm(in_channels)
+#         self.in_proj = nn.Linear(in_channels, hidden_channels)
+
+#         # self.e_norm = nn.LayerNorm(in_channels)
+#         self.e_proj = nn.Linear(in_channels, hidden_channels)
+
+#         # self.n_sem_norm = nn.LayerNorm(in_channels)
+#         self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
+
+#         for i in range(num_layers):
+#             setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
+#             setattr(self, f"hgconv_{i}", HypergraphConv(
+#                 hidden_channels,
+#                 hidden_channels,
+#                 use_attention=False,
+#                 concat=False,
+#                 heads=4
+#             ))
+#             setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
+            
+#             setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
+#             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
+#                 hidden_channels,
+#                 hidden_channels,
+#                 use_attention=True,
+#                 concat=False,
+#                 heads=4,
+#             ))
+#             setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
+            
+#             setattr(self, f"hgconv_{i}_llm_d", HypergraphConv(
+#                 hidden_channels,
+#                 hidden_channels,
+#                 use_attention=True,
+#                 concat=False,
+#                 heads=4,
+#                 attention_mode="edge"
+#             ))
+#             setattr(self, f"skip_{i}_d", nn.Linear(hidden_channels, hidden_channels))
+
+#         self.aggr = MinAggregation()
+
+#         self.node_fusion = nn.Sequential(
+#             nn.LayerNorm(hidden_channels * 2),
+#             nn.Linear(hidden_channels * 2, hidden_channels),
+#             nn.LeakyReLU(),
+#             nn.LayerNorm(hidden_channels),
+#         )
+
+#         self.edge_fusion = nn.Sequential(
+#             nn.LayerNorm(hidden_channels * 2),
+#             nn.Linear(hidden_channels * 2, hidden_channels),
+#             nn.LeakyReLU(),
+#             nn.LayerNorm(hidden_channels),
+#         )
+
+#         self.linear = nn.Sequential(
+#             nn.Linear(hidden_channels, hidden_channels),
+#             nn.LeakyReLU(),
+#             nn.Linear(hidden_channels, hidden_channels),
+#             nn.LeakyReLU(),
+#             nn.Linear(hidden_channels, out_channels)
+#         )
+
+#     def forward(self, x, x_e, edge_index):
+#         x_struct = self.x_struct.to(x.device)
+#         x_struct = x_struct[torch.unique(edge_index[0])]
+
+#         x_struct = normalize(x_struct, p=2, dim=1)
+#         # x_struct = self.in_norm(x_struct)
+#         x_struct = self.in_proj(x_struct)
+#         x_struct = self.activation(x_struct)
+#         x_struct = self.dropout(x_struct)
+
+#         x = normalize(x, p=2, dim=1)
+#         # x = self.n_sem_norm(x)
+#         x = self.n_sem_proj(x)
+#         x = self.activation(x)
+#         x = self.dropout(x)
+
+#         x_e = normalize(x_e, p=2, dim=1)
+#         # x_e = self.e_norm(x_e)
+#         x_e = self.e_proj(x_e)
+#         x_e = self.activation(x_e)
+#         x_e = self.dropout(x_e)
+
+#         for i in range(self.num_layers):
+#             n_norm = getattr(self, f"n_norm_{i}")
+#             hgconv = getattr(self, f"hgconv_{i}")
+#             skip = getattr(self, f"skip_struct_{i}")
+
+#             n_norm_llm = getattr(self, f"n_norm_{i}_llm")
+#             hgconv_llm = getattr(self, f"hgconv_{i}_llm")
+#             skip_llm = getattr(self, f"skip_{i}")
+
+#             hgconv_llm_d = getattr(self, f"hgconv_{i}_llm_d")
+#             skip_llm_d = getattr(self, f"skip_{i}_d")
+
+#             x_struct = n_norm(x_struct)
+#             x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
+
+#             x = n_norm_llm(x)
+#             x = self.activation(hgconv_llm(x, edge_index, hyperedge_attr=x_e)) + skip_llm(x)
+
+#             x = self.activation(hgconv_llm_d(x, edge_index, hyperedge_attr=x_e)) + skip_llm_d(x)
+        
+#         x = self.node_fusion(torch.cat([x_struct, x], dim=1))
+#         x = self.aggr(x[edge_index[0]], edge_index[1])
+#         # x = self.aggr(x, x_e, edge_index)
+#         # x = self.edge_fusion(torch.cat([x_e, x], dim=1))
+#         pred = self.linear(x)
+#         return pred
+
+
+class FullModel(nn.Module):
+    def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
+        super(FullModel, self).__init__()
+
+        self.num_layers = num_layers
+        self.dropout = nn.Dropout(0.3)
+        self.activation = nn.LeakyReLU()
+
+        self.x_struct = torch.randn(num_nodes, in_channels)
+
+        # self.in_norm = nn.LayerNorm(in_channels)
+        self.in_proj = nn.Linear(in_channels, hidden_channels)
+
+        # self.e_norm = nn.LayerNorm(in_channels)
+        self.e_proj = nn.Linear(in_channels, hidden_channels)
+
+        # self.n_sem_norm = nn.LayerNorm(in_channels)
+        self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
+
+        for i in range(num_layers):
+            setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
+            setattr(self, f"hgconv_{i}", HypergraphConv(
+                hidden_channels,
+                hidden_channels,
+                use_attention=False,
+                concat=False,
+                heads=4
+            ))
+            setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
+            
+            setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
+            setattr(self, f"hgconv_{i}_llm", HypergraphConv(
+                hidden_channels,
+                hidden_channels,
+                use_attention=True,
+                concat=False,
+                heads=4,
+            ))
+            setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
+            
+            setattr(self, f"n_norm_{i}_llm_d", nn.LayerNorm(hidden_channels))
+            setattr(self, f"hgconv_{i}_llm_d", HypergraphConv(
+                hidden_channels,
+                hidden_channels,
+                use_attention=True,
+                concat=False,
+                heads=4,
+                attention_mode="node"
+            ))
+            setattr(self, f"skip_{i}_d", nn.Linear(hidden_channels, hidden_channels))
+
+        self.aggr = MinAggregation()
+
+        self.node_fusion = nn.Sequential(
+            nn.LayerNorm(hidden_channels * 2),
+            nn.Linear(hidden_channels * 2, hidden_channels),
+            nn.LeakyReLU(),
+            nn.LayerNorm(hidden_channels),
+        )
+
+        self.edge_fusion = nn.Sequential(
+            nn.LayerNorm(hidden_channels * 2),
+            nn.Linear(hidden_channels * 2, hidden_channels),
+            nn.LeakyReLU(),
+            nn.LayerNorm(hidden_channels),
+        )
+
+        self.linear = nn.Sequential(
+            nn.Linear(hidden_channels, hidden_channels),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_channels, hidden_channels),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_channels, out_channels)
+        )
+
+    def forward(self, x, x_e, edge_index):
+        dual_edge_index = edge_index.flip(0)
+
+        x_struct = self.x_struct.to(x.device)
+        x_struct = x_struct[torch.unique(edge_index[0])]
+
         x_struct = normalize(x_struct, p=2, dim=1)
         # x_struct = self.in_norm(x_struct)
         x_struct = self.in_proj(x_struct)
@@ -288,20 +544,28 @@ class FullModel(nn.Module):
             hgconv_llm = getattr(self, f"hgconv_{i}_llm")
             skip_llm = getattr(self, f"skip_{i}")
 
+            n_norm_d = getattr(self, f"n_norm_{i}_llm_d")
+            hgconv_llm_d = getattr(self, f"hgconv_{i}_llm_d")
+            skip_llm_d = getattr(self, f"skip_{i}_d")
+
             x_struct = n_norm(x_struct)
             x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
 
             x = n_norm_llm(x)
             x = self.activation(hgconv_llm(x, edge_index, hyperedge_attr=x_e)) + skip_llm(x)
+
+            x_e = n_norm_d(x_e)
+            x_e = self.activation(hgconv_llm_d(x_e, dual_edge_index, hyperedge_attr=x)) + skip_llm_d(x_e)
         
         x = self.node_fusion(torch.cat([x_struct, x], dim=1))
         x = self.aggr(x[edge_index[0]], edge_index[1])
         # x = self.aggr(x, x_e, edge_index)
-        x = self.edge_fusion(torch.cat([x, x_e], dim=1))
-        x = self.linear(x)
-        return x
-
-
+        # x_e = normalize(x_e, p=2, dim=1)
+        # x = normalize(x, p=2, dim=1)
+        x = self.edge_fusion(torch.cat([x_e, x], dim=1))
+        pred = self.linear(x)
+        return pred
+    
 class LitCHLPModel(LightningModule):
     def __init__(self, model, lr=1e-4):
         super().__init__()
@@ -392,3 +656,114 @@ class LitCHLPModel(LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)
+    
+
+# class LitCHLPModelContrastive(LightningModule):
+#     def __init__(self, model, lr=1e-4, contrastive_weight=1.0, temperature=0.07):
+#         super().__init__()
+#         self.model = model
+#         self.lr = lr
+#         self.criterion = torch.nn.BCEWithLogitsLoss()
+#         self.contrastive_weight = contrastive_weight
+#         self.temperature = temperature
+#         self.cutoff = None
+#         self.val_preds = []
+#         self.val_targets = []
+#         self.test_preds = []
+#         self.test_targets = []
+#         self.metric = RunningMean(window=11)
+
+#     def training_step(self, batch, batch_idx):
+#         h = alpha_beta_negative_sampling(batch, beta=1)
+#         pred, x_nodes, x_hyper_fused = self.model(h.x, h.edge_attr, h.edge_index)
+
+#         classification_loss = self.criterion(pred.flatten(), h.y.flatten())
+
+        
+#         x_e_pos = x_hyper_fused[h.y == 1]
+#         x_e_neg = x_hyper_fused[h.y == 0]
+
+#         c_loss = contrastive_loss(x_nodes[h.y == 1], x_e_pos, x_e_neg, temperature=self.temperature)
+
+#         loss = classification_loss + self.contrastive_weight * c_loss
+
+#         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+#         self.log("train_class_loss", classification_loss, on_step=True, on_epoch=True, logger=True)
+#         self.log("train_contrastive_loss", c_loss, on_step=True, on_epoch=True, logger=True)
+
+#         return loss
+
+#     def validation_step(self, batch, batch_idx):
+#         h = alpha_beta_negative_sampling(batch, beta=1)
+
+#         pred, x_nodes, x_hyper_fused = self.model(h.x, h.edge_attr, h.edge_index)
+
+#         loss = self.criterion(pred.flatten(), h.y.flatten())
+#         self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+#         self.val_preds.append(pred.detach().cpu())
+#         self.val_targets.append(h.y.detach().cpu())
+
+#     def on_validation_epoch_end(self):
+#         y_pred = torch.cat(self.val_preds)
+#         y_true = torch.cat(self.val_targets)
+#         loss = self.criterion(y_pred.flatten(), y_true).item()
+#         y_pred = torch.sigmoid(y_pred)
+
+#         cutoff = sensivity_specificity_cutoff(y_true.numpy(), y_pred.numpy())
+#         self.cutoff = cutoff
+
+#         y_true = y_true.numpy()
+#         y_pred = y_pred.numpy()
+
+#         self.log("epoch_val_loss", loss, prog_bar=True, on_epoch=True, logger=True)
+#         self.log("val_roc_auc", roc_auc_score(y_true, y_pred), prog_bar=True, logger=True)
+#         self.log("val_accuracy", accuracy_score(y_true, (y_pred >= cutoff).astype(int)), prog_bar=True, logger=True)
+#         self.log("val_precision", precision_score(y_true, (y_pred >= cutoff).astype(int), average='micro'), prog_bar=True, logger=True)
+
+#         self.metric(loss)
+#         running_val = self.metric.compute()
+#         self.log("running_val", running_val, on_epoch=True, logger=True)
+        
+#         self.val_preds.clear()
+#         self.val_targets.clear()
+
+#     def test_step(self, batch, batch_idx):
+#         h = alpha_beta_negative_sampling(batch, beta=1)
+
+#         pred, x_nodes, x_hyper_fused = self.model(h.x, h.edge_attr, h.edge_index)
+#         pred = torch.sigmoid(pred.flatten())
+
+#         self.test_preds.append(pred.detach().cpu())
+#         self.test_targets.append(h.y.flatten().detach().cpu())
+
+#     def on_test_epoch_end(self):
+#         y_pred = torch.cat(self.test_preds).numpy()
+#         y_true = torch.cat(self.test_targets).numpy()
+
+#         cutoff = self.cutoff if self.cutoff is not None else 0.5
+
+#         roc_auc = roc_auc_score(y_true, y_pred)
+#         accuracy = accuracy_score(y_true, (y_pred >= cutoff).astype(int))
+#         precision = precision_score(y_true, (y_pred >= cutoff).astype(int), average='micro')
+
+#         self.log("test_roc_auc", roc_auc, prog_bar=True)
+#         self.log("test_accuracy", accuracy, prog_bar=True)
+#         self.log("test_precision", precision, prog_bar=True)
+
+#         print(f"Test ROC AUC: {roc_auc:.4f}")
+#         print(f"Test Accuracy: {accuracy:.4f}")
+#         print(f"Test Precision: {precision:.4f}")
+
+#         self.test_preds.clear()
+#         self.test_targets.clear()
+
+#         return {
+#             "test_roc_auc": roc_auc,
+#             "test_accuracy": accuracy,
+#             "test_precision": precision,
+#             "test_cutoff": cutoff,
+#         }
+
+#     def configure_optimizers(self):
+#         return torch.optim.AdamW(self.parameters(), lr=self.lr)

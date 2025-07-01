@@ -153,11 +153,6 @@ class CHLPBaseDataset(InMemoryDataset, ABC):
     def __len__(self) -> int:
         return self._data.edge_index[1].max().item() + 1
 
-class IMDBHypergraphDataset(CHLPBaseDataset):
-    
-    GDRIVE_ID = "1D-dqEmkOfOVy6w0ZfrLtJrPw-dibwJ3V"
-    DATASET_NAME = "IMDB"
-
 class ARXIVHypergraphDataset(CHLPBaseDataset):
     
     GDRIVE_ID = "1pXRgFzVKIC-WtSslapAEPf9KlerTFhnd"
@@ -168,11 +163,11 @@ class COURSERAHypergraphDataset(CHLPBaseDataset):
     GDRIVE_ID = "1AVqUuVOpCFVG13-N3lUckYhIrk83WOSu"
     DATASET_NAME = "COURSERA"
 
-class PROVAHypergraphDataset(CHLPBaseDataset):
+class IMDBHypergraphDataset(CHLPBaseDataset):
     GDRIVE_ID = "1c8xTHLDKyF3idmGN2tiRES9GRJYw3cBC"
-    DATASET_NAME = "PROVA"
+    DATASET_NAME = "IMDB"
 
 class PATENTHypergraphDataset(CHLPBaseDataset):
-    GDRIVE_ID = "1YxOuo1G9rtRVXpITzm8XLKxdb-hyjQ4P"
+    GDRIVE_ID = "1Uj9lzTgfyCxEfUaDDcgF5dbV1TK9AvUc"
     DATASET_NAME = "PATENT"
 torch.serialization.add_safe_globals([HyperGraphData])

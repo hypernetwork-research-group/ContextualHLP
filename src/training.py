@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeStruct, FullModel
+from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeStruct, FullModel, SemanticStructModel
 import torch
 from torch_geometric.nn.aggr import MinAggregation, MeanAggregation
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -12,20 +12,21 @@ from pytorch_lightning.loggers import TensorBoardLogger
 def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
     if mode == "baseline":
         model = ModelBaseline(in_channels, 512, 1)
-        lightning_model = LitCHLPModel(model)
-        return lightning_model
     elif mode == "nodes":
         model = ModelNodeStruct(num_nodes, in_channels, 512, 1)
-        lightning_model = LitCHLPModel(model)
-        return lightning_model
     elif mode == "edges":
         model = ModelEdge(in_channels, 512, 1)
-        lightning_model = LitCHLPModel(model)
-        return lightning_model
+    elif mode == "node_semantic_node_structure":
+        model = SemanticStructModel(num_nodes, in_channels, 512, 1, 3)
     elif mode == "full":
-        model = FullModel(num_nodes, in_channels, 512, 1, 1)
-        lightning_model = LitCHLPModel(model)
-        return lightning_model
+        model = FullModel(num_nodes, in_channels, 512, 1, 3)
+    
+    # if mode == "full":
+    #     lightning_model = LitCHLPModelContrastive(model)
+    # else:
+    lightning_model = LitCHLPModel(model)
+
+    return lightning_model
 
 def run_training(lightning_model: LitCHLPModel,
                  train_loader: DataLoader,
@@ -33,7 +34,7 @@ def run_training(lightning_model: LitCHLPModel,
                  mode: str,
                  dataset: str,
                  max_epochs: int = 1200,
-                 early_stopping_patience: int = 100,
+                 early_stopping_patience: int = 20,
                  devices: int = 1,
                  accelerator: str = 'gpu'):
     
