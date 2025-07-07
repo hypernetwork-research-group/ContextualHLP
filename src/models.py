@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score, roc_curve
 import numpy as np
-from .utils import negative_sampling, sensivity_specificity_cutoff, alpha_beta_negative_sampling, negative_samping_mix, negative_samping_mix_2, contrastive_loss
+from .utils import negative_sampling, sensivity_specificity_cutoff, alpha_beta_negative_sampling, negative_samping_mix, negative_samping_mix_2
 from pytorch_lightning import LightningModule
 from torchmetrics.aggregation import RunningMean
 from torch.nn.functional import normalize
@@ -294,148 +294,40 @@ class CrossAttentionAggregator(nn.Module):
 
         return out
 
-class HyperedgeCrossAttentionFusion(nn.Module):
-    def __init__(self, hidden_channels, num_heads=4):
+class FusionBlock(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels=None, use_skip=False):
+        super(FusionBlock, self).__init__()
+        self.use_skip = use_skip
+        self.proj = nn.Sequential(
+            nn.LayerNorm(in_channels),
+            nn.Linear(in_channels, hidden_channels),
+            nn.LeakyReLU(),
+            nn.LayerNorm(hidden_channels),
+        )
+        if out_channels is None:
+            self.out_channels = hidden_channels
+        else:
+            self.out_channels = out_channels
+        self.skip_proj = nn.Linear(in_channels, hidden_channels) if use_skip else None
+
+    def forward(self, x):
+        out = self.proj(x)
+        if self.use_skip:
+            skip = self.skip_proj(x)
+            out = out + skip
+        return out
+
+class GatedFusion(nn.Module):
+    def __init__(self, hidden_dim):
         super().__init__()
-        self.mha = nn.MultiheadAttention(embed_dim=hidden_channels, num_heads=num_heads, batch_first=True)
-        self.norm = nn.LayerNorm(hidden_channels)
-        self.dropout = nn.Dropout(0.3)
+        self.gate_linear = nn.Linear(hidden_dim * 2, hidden_dim)
 
-    def forward(self, node_agg, edge_feat):
-        node_agg = node_agg.unsqueeze(1)
-        edge_feat = edge_feat.unsqueeze(1)
-        
-        attn_output, _ = self.mha(query=node_agg, key=edge_feat, value=edge_feat)
-        out = self.norm(node_agg + self.dropout(attn_output))
-        return out.squeeze(1)
-
-
-# This is ok!
-
-# class FullModel(nn.Module):
-#     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
-#         super(FullModel, self).__init__()
-
-#         self.num_layers = num_layers
-#         self.dropout = nn.Dropout(0.3)
-#         self.activation = nn.LeakyReLU()
-
-#         self.x_struct = torch.randn(num_nodes, in_channels)
-
-#         # self.in_norm = nn.LayerNorm(in_channels)
-#         self.in_proj = nn.Linear(in_channels, hidden_channels)
-
-#         # self.e_norm = nn.LayerNorm(in_channels)
-#         self.e_proj = nn.Linear(in_channels, hidden_channels)
-
-#         # self.n_sem_norm = nn.LayerNorm(in_channels)
-#         self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
-
-#         for i in range(num_layers):
-#             setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
-#             setattr(self, f"hgconv_{i}", HypergraphConv(
-#                 hidden_channels,
-#                 hidden_channels,
-#                 use_attention=False,
-#                 concat=False,
-#                 heads=4
-#             ))
-#             setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
-            
-#             setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
-#             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
-#                 hidden_channels,
-#                 hidden_channels,
-#                 use_attention=True,
-#                 concat=False,
-#                 heads=4,
-#             ))
-#             setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
-            
-#             setattr(self, f"hgconv_{i}_llm_d", HypergraphConv(
-#                 hidden_channels,
-#                 hidden_channels,
-#                 use_attention=True,
-#                 concat=False,
-#                 heads=4,
-#                 attention_mode="edge"
-#             ))
-#             setattr(self, f"skip_{i}_d", nn.Linear(hidden_channels, hidden_channels))
-
-#         self.aggr = MinAggregation()
-
-#         self.node_fusion = nn.Sequential(
-#             nn.LayerNorm(hidden_channels * 2),
-#             nn.Linear(hidden_channels * 2, hidden_channels),
-#             nn.LeakyReLU(),
-#             nn.LayerNorm(hidden_channels),
-#         )
-
-#         self.edge_fusion = nn.Sequential(
-#             nn.LayerNorm(hidden_channels * 2),
-#             nn.Linear(hidden_channels * 2, hidden_channels),
-#             nn.LeakyReLU(),
-#             nn.LayerNorm(hidden_channels),
-#         )
-
-#         self.linear = nn.Sequential(
-#             nn.Linear(hidden_channels, hidden_channels),
-#             nn.LeakyReLU(),
-#             nn.Linear(hidden_channels, hidden_channels),
-#             nn.LeakyReLU(),
-#             nn.Linear(hidden_channels, out_channels)
-#         )
-
-#     def forward(self, x, x_e, edge_index):
-#         x_struct = self.x_struct.to(x.device)
-#         x_struct = x_struct[torch.unique(edge_index[0])]
-
-#         x_struct = normalize(x_struct, p=2, dim=1)
-#         # x_struct = self.in_norm(x_struct)
-#         x_struct = self.in_proj(x_struct)
-#         x_struct = self.activation(x_struct)
-#         x_struct = self.dropout(x_struct)
-
-#         x = normalize(x, p=2, dim=1)
-#         # x = self.n_sem_norm(x)
-#         x = self.n_sem_proj(x)
-#         x = self.activation(x)
-#         x = self.dropout(x)
-
-#         x_e = normalize(x_e, p=2, dim=1)
-#         # x_e = self.e_norm(x_e)
-#         x_e = self.e_proj(x_e)
-#         x_e = self.activation(x_e)
-#         x_e = self.dropout(x_e)
-
-#         for i in range(self.num_layers):
-#             n_norm = getattr(self, f"n_norm_{i}")
-#             hgconv = getattr(self, f"hgconv_{i}")
-#             skip = getattr(self, f"skip_struct_{i}")
-
-#             n_norm_llm = getattr(self, f"n_norm_{i}_llm")
-#             hgconv_llm = getattr(self, f"hgconv_{i}_llm")
-#             skip_llm = getattr(self, f"skip_{i}")
-
-#             hgconv_llm_d = getattr(self, f"hgconv_{i}_llm_d")
-#             skip_llm_d = getattr(self, f"skip_{i}_d")
-
-#             x_struct = n_norm(x_struct)
-#             x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
-
-#             x = n_norm_llm(x)
-#             x = self.activation(hgconv_llm(x, edge_index, hyperedge_attr=x_e)) + skip_llm(x)
-
-#             x = self.activation(hgconv_llm_d(x, edge_index, hyperedge_attr=x_e)) + skip_llm_d(x)
-        
-#         x = self.node_fusion(torch.cat([x_struct, x], dim=1))
-#         x = self.aggr(x[edge_index[0]], edge_index[1])
-#         # x = self.aggr(x, x_e, edge_index)
-#         # x = self.edge_fusion(torch.cat([x_e, x], dim=1))
-#         pred = self.linear(x)
-#         return pred
-
-
+    def forward(self, x_struct, x_sem):
+        concat = torch.cat([x_struct, x_sem], dim=1)
+        z = torch.sigmoid(self.gate_linear(concat))
+        fused = z * x_struct + (1 - z) * x_sem
+        return fused
+    
 class FullModel(nn.Module):
     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
         super(FullModel, self).__init__()
@@ -446,13 +338,8 @@ class FullModel(nn.Module):
 
         self.x_struct = torch.randn(num_nodes, in_channels)
 
-        # self.in_norm = nn.LayerNorm(in_channels)
         self.in_proj = nn.Linear(in_channels, hidden_channels)
-
-        # self.e_norm = nn.LayerNorm(in_channels)
         self.e_proj = nn.Linear(in_channels, hidden_channels)
-
-        # self.n_sem_norm = nn.LayerNorm(in_channels)
         self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
 
         for i in range(num_layers):
@@ -462,10 +349,11 @@ class FullModel(nn.Module):
                 hidden_channels,
                 use_attention=False,
                 concat=False,
-                heads=4
+                heads=4,
+                attention_mode="node"
             ))
             setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
-            
+
             setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
                 hidden_channels,
@@ -473,9 +361,10 @@ class FullModel(nn.Module):
                 use_attention=True,
                 concat=False,
                 heads=4,
+                attention_mode="node"
             ))
             setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
-            
+
             setattr(self, f"n_norm_{i}_llm_d", nn.LayerNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm_d", HypergraphConv(
                 hidden_channels,
@@ -489,19 +378,11 @@ class FullModel(nn.Module):
 
         self.aggr = MinAggregation()
 
-        self.node_fusion = nn.Sequential(
-            nn.LayerNorm(hidden_channels * 2),
-            nn.Linear(hidden_channels * 2, hidden_channels),
-            nn.LeakyReLU(),
-            nn.LayerNorm(hidden_channels),
-        )
+        # self.node_fusion = FusionBlock(hidden_channels * 2, hidden_channels)
+        # self.edge_fusion = FusionBlock(hidden_channels * 2, hidden_channels)
 
-        self.edge_fusion = nn.Sequential(
-            nn.LayerNorm(hidden_channels * 2),
-            nn.Linear(hidden_channels * 2, hidden_channels),
-            nn.LeakyReLU(),
-            nn.LayerNorm(hidden_channels),
-        )
+        self.node_fusion = GatedFusion(hidden_channels)
+        self.edge_fusion = GatedFusion(hidden_channels)
 
         self.linear = nn.Sequential(
             nn.Linear(hidden_channels, hidden_channels),
@@ -518,19 +399,16 @@ class FullModel(nn.Module):
         x_struct = x_struct[torch.unique(edge_index[0])]
 
         x_struct = normalize(x_struct, p=2, dim=1)
-        # x_struct = self.in_norm(x_struct)
         x_struct = self.in_proj(x_struct)
         x_struct = self.activation(x_struct)
         x_struct = self.dropout(x_struct)
 
         x = normalize(x, p=2, dim=1)
-        # x = self.n_sem_norm(x)
         x = self.n_sem_proj(x)
         x = self.activation(x)
         x = self.dropout(x)
 
         x_e = normalize(x_e, p=2, dim=1)
-        # x_e = self.e_norm(x_e)
         x_e = self.e_proj(x_e)
         x_e = self.activation(x_e)
         x_e = self.dropout(x_e)
@@ -549,23 +427,21 @@ class FullModel(nn.Module):
             skip_llm_d = getattr(self, f"skip_{i}_d")
 
             x_struct = n_norm(x_struct)
-            x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
+            x_struct = self.activation(hgconv(x_struct, edge_index, hyperedge_attr=x_e)) + skip(x_struct)
 
             x = n_norm_llm(x)
             x = self.activation(hgconv_llm(x, edge_index, hyperedge_attr=x_e)) + skip_llm(x)
 
             x_e = n_norm_d(x_e)
             x_e = self.activation(hgconv_llm_d(x_e, dual_edge_index, hyperedge_attr=x)) + skip_llm_d(x_e)
-        
-        x = self.node_fusion(torch.cat([x_struct, x], dim=1))
-        x = self.aggr(x[edge_index[0]], edge_index[1])
-        # x = self.aggr(x, x_e, edge_index)
-        # x_e = normalize(x_e, p=2, dim=1)
-        # x = normalize(x, p=2, dim=1)
-        x = self.edge_fusion(torch.cat([x_e, x], dim=1))
-        pred = self.linear(x)
-        return pred
-    
+
+        # Fusion
+        x_fused = self.node_fusion(x_struct, x)
+        x_aggr = self.aggr(x_fused[edge_index[0]], edge_index[1])
+        x_e_fused = self.edge_fusion(x_aggr, x_e)
+        pred = self.linear(x_e_fused)
+        return pred, x_aggr, x_e_fused
+
 class LitCHLPModel(LightningModule):
     def __init__(self, model, lr=1e-4):
         super().__init__()
@@ -581,15 +457,21 @@ class LitCHLPModel(LightningModule):
     
     def training_step(self, batch, batch_idx):
         h = alpha_beta_negative_sampling(batch)
-        y_pred = self.model(h.x, h.edge_attr, h.edge_index).flatten()
-        loss = self.criterion(y_pred, h.y.flatten())
+        y_pred = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = y_pred.flatten()
+        bce_loss = self.criterion(y_pred, h.y.flatten())
+
+        loss = bce_loss
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         return loss
     
     def validation_step(self, batch, batch_idx):
         h = alpha_beta_negative_sampling(batch)
-        y_pred = self.model(h.x, h.edge_attr, h.edge_index).flatten()
-        loss = self.criterion(y_pred, h.y.flatten())
+        y_pred = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = y_pred.flatten()
+        bce_loss = self.criterion(y_pred, h.y.flatten())
+
+        loss = bce_loss
         self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         
         self.val_preds.append(y_pred.detach().cpu())
@@ -620,7 +502,8 @@ class LitCHLPModel(LightningModule):
     
     def test_step(self, batch, batch_idx):
         h = alpha_beta_negative_sampling(batch)
-        y_pred = torch.sigmoid(self.model(h.x, h.edge_attr, h.edge_index).flatten())
+        y_pred = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = torch.sigmoid(y_pred).flatten()
 
         self.test_preds.append(y_pred.detach().cpu())
         self.test_targets.append(h.y.detach().cpu())
@@ -653,117 +536,128 @@ class LitCHLPModel(LightningModule):
             "test_cutoff": cutoff,
         }
 
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), lr=self.lr)
+
+
+from torch.nn import TripletMarginLoss
+
+class LitCHLPModelContrastive(LightningModule):
+    def __init__(self, model, lr=1e-4):
+        super().__init__()
+        self.model = model
+        self.lr = lr
+        self.criterion = torch.nn.BCEWithLogitsLoss()
+        self.triplet_loss_fn = TripletMarginLoss(margin=1.0)
+        self.cutoff = None
+        self.val_preds = []
+        self.val_targets = []
+        self.test_preds = []
+        self.test_targets = []
+        self.metric = RunningMean(window=11)
+    
+    def training_step(self, batch, batch_idx):
+        h = alpha_beta_negative_sampling(batch)
+        y_pred, x_aggr, x_e = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = y_pred.flatten()
+        bce_loss = self.criterion(y_pred, h.y.flatten())
+        
+        pos_mask = (h.y == 1)
+        neg_mask = (h.y == 0)
+
+        if pos_mask.sum() > 0 and neg_mask.sum() > 0:
+            anchor = x_e[pos_mask]
+            positive = x_aggr[pos_mask]
+            negative = x_aggr[neg_mask][:anchor.size(0)]
+            triplet_loss = self.triplet_loss_fn(anchor, positive, negative)
+        else:
+            triplet_loss = torch.tensor(0.0, device=self.device)
+
+        loss = bce_loss + triplet_loss
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        h = alpha_beta_negative_sampling(batch)
+        y_pred, x_aggr, x_e = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = y_pred.flatten()
+        bce_loss = self.criterion(y_pred, h.y.flatten())
+        
+        pos_mask = (h.y == 1)
+        neg_mask = (h.y == 0)
+
+        if pos_mask.sum() > 0 and neg_mask.sum() > 0:
+            anchor = x_e[pos_mask]
+            positive = x_aggr[pos_mask]
+            negative = x_aggr[neg_mask][:anchor.size(0)]
+            triplet_loss = self.triplet_loss_fn(anchor, positive, negative)
+        else:
+            triplet_loss = torch.tensor(0.0, device=self.device)
+
+        loss = bce_loss + triplet_loss
+        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        
+        self.val_preds.append(y_pred.detach().cpu())
+        self.val_targets.append(h.y.detach().cpu())
+
+    def on_validation_epoch_end(self):
+        y_pred = torch.cat(self.val_preds)
+        y_true = torch.cat(self.val_targets)
+        loss = self.criterion(y_pred, y_true).item()
+        y_pred = torch.sigmoid(y_pred)
+
+        cutoff = sensivity_specificity_cutoff(y_true.numpy(), y_pred.numpy())
+        self.cutoff = cutoff
+        
+        y_true = y_true.numpy()
+        y_pred = y_pred.numpy()
+        self.log("epoch_val_loss", loss, prog_bar=False, on_epoch=True, logger=True)
+
+        self.log("val_roc_auc", roc_auc_score(y_true, y_pred), prog_bar=False, logger=True)
+        self.log("val_accuracy", accuracy_score(y_true, (y_pred >= cutoff).astype(int)), prog_bar=False, logger=True)
+        self.log("val_precision", precision_score(y_true, (y_pred >= cutoff).astype(int), average='micro'), prog_bar=False, logger=True)
+        self.metric(loss)
+        running_val = self.metric.compute()
+        self.log("running_val", running_val, on_epoch=True, logger=True)
+        self.val_preds.clear()
+        self.val_targets.clear()
+
+    
+    def test_step(self, batch, batch_idx):
+        h = alpha_beta_negative_sampling(batch)
+        y_pred, x_aggr, x_e = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = torch.sigmoid(y_pred).flatten()
+
+        self.test_preds.append(y_pred.detach().cpu())
+        self.test_targets.append(h.y.detach().cpu())
+    
+    def on_test_epoch_end(self):
+        y_pred = torch.cat(self.test_preds).numpy()
+        y_true = torch.cat(self.test_targets).numpy()
+
+        cutoff = self.cutoff if self.cutoff is not None else 0.5
+
+        roc_auc = roc_auc_score(y_true, y_pred)
+        accuracy = accuracy_score(y_true, (y_pred >= cutoff).astype(int))
+        precision = precision_score(y_true, (y_pred >= cutoff).astype(int), average='micro')
+
+        self.log("test_roc_auc", roc_auc, prog_bar=False)
+        self.log("test_accuracy", accuracy, prog_bar=False)
+        self.log("test_precision", precision, prog_bar=False)
+
+        print(f"Test ROC AUC: {roc_auc:.4f}")
+        print(f"Test Accuracy: {accuracy:.4f}")
+        print(f"Test Precision: {precision:.4f}")
+
+        self.test_preds.clear()
+        self.test_targets.clear()
+
+        return {
+            "test_roc_auc": roc_auc,
+            "test_accuracy": accuracy,
+            "test_precision": precision,
+            "test_cutoff": cutoff,
+        }
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)
-    
-
-# class LitCHLPModelContrastive(LightningModule):
-#     def __init__(self, model, lr=1e-4, contrastive_weight=1.0, temperature=0.07):
-#         super().__init__()
-#         self.model = model
-#         self.lr = lr
-#         self.criterion = torch.nn.BCEWithLogitsLoss()
-#         self.contrastive_weight = contrastive_weight
-#         self.temperature = temperature
-#         self.cutoff = None
-#         self.val_preds = []
-#         self.val_targets = []
-#         self.test_preds = []
-#         self.test_targets = []
-#         self.metric = RunningMean(window=11)
-
-#     def training_step(self, batch, batch_idx):
-#         h = alpha_beta_negative_sampling(batch, beta=1)
-#         pred, x_nodes, x_hyper_fused = self.model(h.x, h.edge_attr, h.edge_index)
-
-#         classification_loss = self.criterion(pred.flatten(), h.y.flatten())
-
-        
-#         x_e_pos = x_hyper_fused[h.y == 1]
-#         x_e_neg = x_hyper_fused[h.y == 0]
-
-#         c_loss = contrastive_loss(x_nodes[h.y == 1], x_e_pos, x_e_neg, temperature=self.temperature)
-
-#         loss = classification_loss + self.contrastive_weight * c_loss
-
-#         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-#         self.log("train_class_loss", classification_loss, on_step=True, on_epoch=True, logger=True)
-#         self.log("train_contrastive_loss", c_loss, on_step=True, on_epoch=True, logger=True)
-
-#         return loss
-
-#     def validation_step(self, batch, batch_idx):
-#         h = alpha_beta_negative_sampling(batch, beta=1)
-
-#         pred, x_nodes, x_hyper_fused = self.model(h.x, h.edge_attr, h.edge_index)
-
-#         loss = self.criterion(pred.flatten(), h.y.flatten())
-#         self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-
-#         self.val_preds.append(pred.detach().cpu())
-#         self.val_targets.append(h.y.detach().cpu())
-
-#     def on_validation_epoch_end(self):
-#         y_pred = torch.cat(self.val_preds)
-#         y_true = torch.cat(self.val_targets)
-#         loss = self.criterion(y_pred.flatten(), y_true).item()
-#         y_pred = torch.sigmoid(y_pred)
-
-#         cutoff = sensivity_specificity_cutoff(y_true.numpy(), y_pred.numpy())
-#         self.cutoff = cutoff
-
-#         y_true = y_true.numpy()
-#         y_pred = y_pred.numpy()
-
-#         self.log("epoch_val_loss", loss, prog_bar=True, on_epoch=True, logger=True)
-#         self.log("val_roc_auc", roc_auc_score(y_true, y_pred), prog_bar=True, logger=True)
-#         self.log("val_accuracy", accuracy_score(y_true, (y_pred >= cutoff).astype(int)), prog_bar=True, logger=True)
-#         self.log("val_precision", precision_score(y_true, (y_pred >= cutoff).astype(int), average='micro'), prog_bar=True, logger=True)
-
-#         self.metric(loss)
-#         running_val = self.metric.compute()
-#         self.log("running_val", running_val, on_epoch=True, logger=True)
-        
-#         self.val_preds.clear()
-#         self.val_targets.clear()
-
-#     def test_step(self, batch, batch_idx):
-#         h = alpha_beta_negative_sampling(batch, beta=1)
-
-#         pred, x_nodes, x_hyper_fused = self.model(h.x, h.edge_attr, h.edge_index)
-#         pred = torch.sigmoid(pred.flatten())
-
-#         self.test_preds.append(pred.detach().cpu())
-#         self.test_targets.append(h.y.flatten().detach().cpu())
-
-#     def on_test_epoch_end(self):
-#         y_pred = torch.cat(self.test_preds).numpy()
-#         y_true = torch.cat(self.test_targets).numpy()
-
-#         cutoff = self.cutoff if self.cutoff is not None else 0.5
-
-#         roc_auc = roc_auc_score(y_true, y_pred)
-#         accuracy = accuracy_score(y_true, (y_pred >= cutoff).astype(int))
-#         precision = precision_score(y_true, (y_pred >= cutoff).astype(int), average='micro')
-
-#         self.log("test_roc_auc", roc_auc, prog_bar=True)
-#         self.log("test_accuracy", accuracy, prog_bar=True)
-#         self.log("test_precision", precision, prog_bar=True)
-
-#         print(f"Test ROC AUC: {roc_auc:.4f}")
-#         print(f"Test Accuracy: {accuracy:.4f}")
-#         print(f"Test Precision: {precision:.4f}")
-
-#         self.test_preds.clear()
-#         self.test_targets.clear()
-
-#         return {
-#             "test_roc_auc": roc_auc,
-#             "test_accuracy": accuracy,
-#             "test_precision": precision,
-#             "test_cutoff": cutoff,
-#         }
-
-#     def configure_optimizers(self):
-#         return torch.optim.AdamW(self.parameters(), lr=self.lr)

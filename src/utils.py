@@ -359,18 +359,3 @@ def load_and_prepare_data(
     )
 
     return train_loader, val_loader, test_loader, dataset.num_features
-
-def contrastive_loss(x_nodes_pos, x_e_pos, x_e_neg, temperature=0.07):
-    pos_sim = F.cosine_similarity(x_nodes_pos, x_e_pos).unsqueeze(1)
-
-    neg_sim = torch.mm(F.normalize(x_nodes_pos, dim=1), F.normalize(x_e_neg, dim=1).T)
-
-    logits = torch.cat([pos_sim, neg_sim], dim=1)
-
-    logits /= temperature
-
-    labels = torch.zeros(x_nodes_pos.size(0), dtype=torch.long, device=x_nodes_pos.device)
-
-    loss = F.cross_entropy(logits, labels)
-
-    return loss

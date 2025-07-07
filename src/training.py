@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeStruct, FullModel, SemanticStructModel
+from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeStruct, FullModel, SemanticStructModel, LitCHLPModelContrastive
 import torch
 from torch_geometric.nn.aggr import MinAggregation, MeanAggregation
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -17,14 +17,14 @@ def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
     elif mode == "edges":
         model = ModelEdge(in_channels, 512, 1)
     elif mode == "node_semantic_node_structure":
-        model = SemanticStructModel(num_nodes, in_channels, 512, 1, 3)
+        model = SemanticStructModel(num_nodes, in_channels, 512, 1, 1)
     elif mode == "full":
         model = FullModel(num_nodes, in_channels, 512, 1, 3)
     
-    # if mode == "full":
-    #     lightning_model = LitCHLPModelContrastive(model)
-    # else:
-    lightning_model = LitCHLPModel(model)
+    if mode == "full":
+        lightning_model = LitCHLPModelContrastive(model)
+    else:
+        lightning_model = LitCHLPModel(model)
 
     return lightning_model
 
@@ -34,7 +34,7 @@ def run_training(lightning_model: LitCHLPModel,
                  mode: str,
                  dataset: str,
                  max_epochs: int = 1200,
-                 early_stopping_patience: int = 20,
+                 early_stopping_patience: int = 80,
                  devices: int = 1,
                  accelerator: str = 'gpu'):
     
