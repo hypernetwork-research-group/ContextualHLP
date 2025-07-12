@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeStruct, FullModel, SemanticStructModel, LitCHLPModelContrastive
+from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeSem, FullModel, SemanticStructModel, LLMNLLMEModel, NewModelSemantic, NewLLMn_LLMe, Struct_LLMn
 import torch
 from torch_geometric.nn.aggr import MinAggregation, MeanAggregation
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -12,18 +12,30 @@ from pytorch_lightning.loggers import TensorBoardLogger
 def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
     if mode == "baseline":
         model = ModelBaseline(in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
     elif mode == "nodes":
-        model = ModelNodeStruct(num_nodes, in_channels, 512, 1)
+        model = ModelNodeSem(num_nodes, in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
+    elif mode == "just_node_semantic":
+        model = NewModelSemantic(num_nodes, in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
     elif mode == "edges":
         model = ModelEdge(in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
+    elif mode == "just_edge_semantic":
+        model = NewLLMn_LLMe(in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
     elif mode == "node_semantic_node_structure":
-        model = SemanticStructModel(num_nodes, in_channels, 512, 1, 1)
+        model = SemanticStructModel(num_nodes, in_channels, 512, 1, 3)
+        lightning_model = LitCHLPModel(model)
+    elif mode == "node_llm_edge_llm":
+        model = LLMNLLMEModel(num_nodes, in_channels, 512, 1, 1)
+        lightning_model = LitCHLPModel(model)
+    elif mode == "struct_llm_n":
+        model = Struct_LLMn(num_nodes, in_channels, 512, 1, 1)
+        lightning_model = LitCHLPModel(model)
     elif mode == "full":
         model = FullModel(num_nodes, in_channels, 512, 1, 3)
-    
-    if mode == "full":
-        lightning_model = LitCHLPModelContrastive(model)
-    else:
         lightning_model = LitCHLPModel(model)
 
     return lightning_model
@@ -34,7 +46,7 @@ def run_training(lightning_model: LitCHLPModel,
                  mode: str,
                  dataset: str,
                  max_epochs: int = 1200,
-                 early_stopping_patience: int = 80,
+                 early_stopping_patience: int = 40,
                  devices: int = 1,
                  accelerator: str = 'gpu'):
     
@@ -49,7 +61,7 @@ def run_training(lightning_model: LitCHLPModel,
     )
 
     trainer = Trainer(
-        max_epochs=200,
+        max_epochs=300,
         accelerator=accelerator,
         devices=devices,
         log_every_n_steps=10,

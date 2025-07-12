@@ -2,12 +2,12 @@
 
 # chmod +x run.sh
 
-EPOCHS=400
+EPOCHS=300
 BATCH_SIZE=16
 NUM_WORKERS=8
 
-DATASETS=("IMDB") # "COURSERA" "IMDB" "PATENT" "ARXIV"
-MODES=("full") #"baseline" "nodes" "edges" "full" "node_semantic_node_structure"
+DATASETS=("COURSERA") # "COURSERA" "IMDB" "PATENT" "ARXIV"
+MODES=("baseline" "nodes" "edges" "full" "node_semantic_node_structure") #"baseline" "nodes" "edges" "full" "node_semantic_node_structure" "just_node_semantic" "just_edge_semantic" "struct_llm_n" "node_llm_edge_llm"
 
 for dataset in "${DATASETS[@]}"; do
   for mode in "${MODES[@]}"; do
