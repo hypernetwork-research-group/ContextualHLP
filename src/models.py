@@ -9,132 +9,132 @@ from torchmetrics.aggregation import RunningMean
 from torch.nn.functional import normalize
 from torch_geometric.nn import HypergraphConv, SoftmaxAggregation, MinAggregation, MulAggregation
 
-class NewModelSemantic(nn.Module):
-    def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
-        super(NewModelSemantic, self).__init__()
+# class NewModelSemantic(nn.Module):
+#     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
+#         super(NewModelSemantic, self).__init__()
 
-        self.dropout = nn.Dropout(0.3)
-        self.activation = nn.LeakyReLU()
+#         self.dropout = nn.Dropout(0.3)
+#         self.activation = nn.LeakyReLU()
 
-        self.n_sem_norm = nn.LayerNorm(in_channels)
-        self.n_sem_proj = nn.Sequential(
-            nn.Linear(in_channels, hidden_channels),
-        )
+#         self.n_sem_norm = nn.LayerNorm(in_channels)
+#         self.n_sem_proj = nn.Sequential(
+#             nn.Linear(in_channels, hidden_channels),
+#         )
 
-        self.aggr = MinAggregation()
-        self.linear = nn.Linear(hidden_channels, out_channels)
+#         self.aggr = MinAggregation()
+#         self.linear = nn.Linear(hidden_channels, out_channels)
 
-    def forward(self, x, x_e, edge_index):
-        x = normalize(x, p=2, dim=1)
-        x = self.n_sem_norm(x)
-        x = self.n_sem_proj(x)
-        x = self.activation(x)
+#     def forward(self, x, x_e, edge_index):
+#         x = normalize(x, p=2, dim=1)
+#         x = self.n_sem_norm(x)
+#         x = self.n_sem_proj(x)
+#         x = self.activation(x)
         
-        x = self.aggr(x[edge_index[0]], edge_index[1])
-        x = self.linear(x)
-        return x
+#         x = self.aggr(x[edge_index[0]], edge_index[1])
+#         x = self.linear(x)
+#         return x
 
-class NewLLMn_LLMe(nn.Module):    
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
-        super(NewLLMn_LLMe, self).__init__()
+# class NewLLMn_LLMe(nn.Module):    
+#     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
+#         super(NewLLMn_LLMe, self).__init__()
 
-        self.dropout = nn.Dropout(0.3)
-        self.activation = nn.LeakyReLU()
+#         self.dropout = nn.Dropout(0.3)
+#         self.activation = nn.LeakyReLU()
 
-        self.in_proj = nn.Linear(in_channels, hidden_channels)
-        self.e_norm = nn.LayerNorm(in_channels)
-        self.e_proj = nn.Linear(in_channels, hidden_channels)
+#         self.in_proj = nn.Linear(in_channels, hidden_channels)
+#         self.e_norm = nn.LayerNorm(in_channels)
+#         self.e_proj = nn.Linear(in_channels, hidden_channels)
 
-        self.num_layers = num_layers
+#         self.num_layers = num_layers
 
-        self.aggr = MinAggregation()
-        self.edge_fusion = nn.Linear(hidden_channels * 2, hidden_channels)
-        self.linear = nn.Linear(hidden_channels, out_channels)
+#         self.aggr = MinAggregation()
+#         self.edge_fusion = nn.Linear(hidden_channels * 2, hidden_channels)
+#         self.linear = nn.Linear(hidden_channels, out_channels)
 
-    def forward(self, x, x_e, edge_index):
-        x = torch.nn.functional.normalize(x, p=2, dim=1)
-        x = self.in_proj(x)
-        x = self.activation(x)
-        x = self.dropout(x)
+#     def forward(self, x, x_e, edge_index):
+#         x = torch.nn.functional.normalize(x, p=2, dim=1)
+#         x = self.in_proj(x)
+#         x = self.activation(x)
+#         x = self.dropout(x)
 
-        x_e = torch.nn.functional.normalize(x_e, p=2, dim=1)
-        x_e = self.e_norm(x_e)
-        x_e = self.e_proj(x_e)
-        x_e = self.activation(x_e)
-        x_e = self.dropout(x_e)
+#         x_e = torch.nn.functional.normalize(x_e, p=2, dim=1)
+#         x_e = self.e_norm(x_e)
+#         x_e = self.e_proj(x_e)
+#         x_e = self.activation(x_e)
+#         x_e = self.dropout(x_e)
 
-        x_aggr = self.aggr(x[edge_index[0]], edge_index[1])
-        x_e_fused = self.edge_fusion(torch.cat([x_aggr, x_e], dim=1))
-        x = self.linear(x_e_fused)
-        return x, x_aggr, x_e_fused
+#         x_aggr = self.aggr(x[edge_index[0]], edge_index[1])
+#         x_e_fused = self.edge_fusion(torch.cat([x_aggr, x_e], dim=1))
+#         x = self.linear(x_e_fused)
+#         return x, x_aggr, x_e_fused
 
-class Struct_LLMn(nn.Module):
-    def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
-        super(Struct_LLMn, self).__init__()
+# class Struct_LLMn(nn.Module):
+#     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
+#         super(Struct_LLMn, self).__init__()
 
-        self.x_struct = torch.randn(num_nodes, in_channels)
+#         self.x_struct = torch.randn(num_nodes, in_channels)
 
-        self.dropout = nn.Dropout(0.3)
-        self.activation = nn.LeakyReLU()
-        self.in_norm = nn.LayerNorm(in_channels)
-        self.in_proj = nn.Linear(in_channels, hidden_channels)
+#         self.dropout = nn.Dropout(0.3)
+#         self.activation = nn.LeakyReLU()
+#         self.in_norm = nn.LayerNorm(in_channels)
+#         self.in_proj = nn.Linear(in_channels, hidden_channels)
 
-        self.n_sem_norm = nn.LayerNorm(in_channels)
-        self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
+#         self.n_sem_norm = nn.LayerNorm(in_channels)
+#         self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
 
-        for i in range(num_layers):
-            setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
-            setattr(self, f"hgconv_{i}", HypergraphConv(
-                hidden_channels,
-                hidden_channels,
-                use_attention=False,
-                concat=False,
-                heads=4
-            ))
-            setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
+#         for i in range(num_layers):
+#             setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
+#             setattr(self, f"hgconv_{i}", HypergraphConv(
+#                 hidden_channels,
+#                 hidden_channels,
+#                 use_attention=False,
+#                 concat=False,
+#                 heads=4
+#             ))
+#             setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
 
-        self.num_layers = num_layers
-        self.aggr = MinAggregation()
-        self.node_fusion = nn.Sequential(
-            nn.LayerNorm(hidden_channels * 2),
-            nn.Linear(hidden_channels * 2, hidden_channels),
-            nn.LeakyReLU(),
-            nn.LayerNorm(hidden_channels),
-        )
+#         self.num_layers = num_layers
+#         self.aggr = MinAggregation()
+#         self.node_fusion = nn.Sequential(
+#             nn.LayerNorm(hidden_channels * 2),
+#             nn.Linear(hidden_channels * 2, hidden_channels),
+#             nn.LeakyReLU(),
+#             nn.LayerNorm(hidden_channels),
+#         )
         
-        self.linear = nn.Sequential(
-            nn.Linear(hidden_channels, hidden_channels),
-            nn.LeakyReLU(),
-            nn.Linear(hidden_channels, hidden_channels),
-            nn.LeakyReLU(),
-            nn.Linear(hidden_channels, out_channels)
-        )
+#         self.linear = nn.Sequential(
+#             nn.Linear(hidden_channels, hidden_channels),
+#             nn.LeakyReLU(),
+#             nn.Linear(hidden_channels, hidden_channels),
+#             nn.LeakyReLU(),
+#             nn.Linear(hidden_channels, out_channels)
+#         )
 
-    def forward(self, x, x_e, edge_index):
-        x_struct = self.x_struct.to(x.device)
-        x_struct = x_struct[torch.unique(edge_index[0])]
-        x_struct = normalize(x_struct, p=2, dim=1)
-        x_struct = self.in_proj(x_struct)
-        x_struct = self.activation(x_struct)
-        x_struct = self.dropout(x_struct)
+#     def forward(self, x, x_e, edge_index):
+#         x_struct = self.x_struct.to(x.device)
+#         x_struct = x_struct[torch.unique(edge_index[0])]
+#         x_struct = normalize(x_struct, p=2, dim=1)
+#         x_struct = self.in_proj(x_struct)
+#         x_struct = self.activation(x_struct)
+#         x_struct = self.dropout(x_struct)
 
-        x = normalize(x, p=2, dim=1)
-        x = self.n_sem_proj(x)
-        x = self.activation(x)
-        x = self.dropout(x)
+#         x = normalize(x, p=2, dim=1)
+#         x = self.n_sem_proj(x)
+#         x = self.activation(x)
+#         x = self.dropout(x)
 
-        for i in range(self.num_layers):
-            n_norm = getattr(self, f"n_norm_{i}")
-            hgconv = getattr(self, f"hgconv_{i}")
-            skip = getattr(self, f"skip_struct_{i}")
+#         for i in range(self.num_layers):
+#             n_norm = getattr(self, f"n_norm_{i}")
+#             hgconv = getattr(self, f"hgconv_{i}")
+#             skip = getattr(self, f"skip_struct_{i}")
 
-            x_struct = n_norm(x_struct)
-            x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
+#             x_struct = n_norm(x_struct)
+#             x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
         
-        x = self.node_fusion(torch.cat([x_struct, x], dim=1))
-        x = self.aggr(x[edge_index[0]], edge_index[1])
-        x = self.linear(x)
-        return x
+#         x = self.node_fusion(torch.cat([x_struct, x], dim=1))
+#         x = self.aggr(x[edge_index[0]], edge_index[1])
+#         x = self.linear(x)
+#         return x
 
 class ModelBaseline(nn.Module):    
     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
@@ -518,7 +518,7 @@ class FullModel(nn.Module):
         x_e_fused = self.edge_fusion(torch.cat([x_aggr, x_e], dim=1))
         pred = self.linear(x_e_fused)
         return pred #, x_aggr, x_e_fused
-    
+
 class LLMNLLMEModel(nn.Module):
     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
         super(LLMNLLMEModel, self).__init__()
