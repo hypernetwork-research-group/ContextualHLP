@@ -155,19 +155,19 @@ class CHLPBaseDataset(InMemoryDataset, ABC):
 
 class ARXIVHypergraphDataset(CHLPBaseDataset):
     
-    GDRIVE_ID = "1pXRgFzVKIC-WtSslapAEPf9KlerTFhnd"
+    GDRIVE_ID = "6q0TarVsnFi3wCchLvvc9iNe8kILwhX6"
     DATASET_NAME = "ARXIV"
 
 class COURSERAHypergraphDataset(CHLPBaseDataset):
     
-    GDRIVE_ID = "1AVqUuVOpCFVG13-N3lUckYhIrk83WOSu"
+    GDRIVE_ID = "1h_Pe3ATRlXBt2Zhy6Bffb7RcCkk3PgfR"
     DATASET_NAME = "COURSERA"
 
 class IMDBHypergraphDataset(CHLPBaseDataset):
-    GDRIVE_ID = "1c8xTHLDKyF3idmGN2tiRES9GRJYw3cBC"
+    GDRIVE_ID = "1ghUYiyNDvbSF4VKhgMS0akjSL0Wei0uU"
     DATASET_NAME = "IMDB"
 
 class PATENTHypergraphDataset(CHLPBaseDataset):
-    GDRIVE_ID = "1Uj9lzTgfyCxEfUaDDcgF5dbV1TK9AvUc"
+    GDRIVE_ID = "17FZAsGdMQMRZCWF6Vjjbz4F_NObwR3Cr"
     DATASET_NAME = "PATENT"
 torch.serialization.add_safe_globals([HyperGraphData])
