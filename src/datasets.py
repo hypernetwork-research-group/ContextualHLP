@@ -18,6 +18,7 @@ class SplitDataset(InMemoryDataset):
             x=self._data.x,
             edge_index=edge_index,
             edge_attr=self._data.edge_attr[idx],
+            x_struct=self._data.x_struct
         )
 
     def __len__(self) -> int:
@@ -48,6 +49,7 @@ def train_test_split(dataset: InMemoryDataset, test_size: float = 0.2):
 
 def collate_fn(batch):
     x = batch[0].x
+    x_struct = batch[0].x_struct
     edge_index = torch.empty((2, 0), dtype=torch.long)
     edge_attr = torch.empty((0, batch[0].edge_attr.shape[1]), dtype=torch.long)
     for i in range(len(batch)):
@@ -63,6 +65,7 @@ def collate_fn(batch):
         edge_index=edge_index,
         edge_attr=edge_attr,
     )
+    result.x_struct = x_struct[unique]
     return result
 
 from abc import ABC
@@ -120,11 +123,16 @@ class CHLPBaseDataset(InMemoryDataset, ABC):
         with open(self.raw_dir + "/hyperedge_embeddings.pkl", "rb") as f:
             hyperedge_embeddings = torch.tensor(pickle.load(f))
 
-        data_list = [HyperGraphData(
+        # with open(self.raw_dir + "/eigvec.pkl", "rb") as f:
+        #     x_struct = torch.tensor(pickle.load(f))
+        x_struct = torch.randn(node_embeddings.shape[0], 768)
+        data = HyperGraphData(
             x=node_embeddings,
             edge_index=edge_index,
             edge_attr=hyperedge_embeddings,
-        )]
+            x_struct=x_struct
+        )
+        data_list = [data]
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
@@ -143,11 +151,14 @@ class CHLPBaseDataset(InMemoryDataset, ABC):
         edge_index_mask = torch.isin(self._data.edge_index[1], idx)
         edge_index = self._data.edge_index[:, edge_index_mask]
         _, edge_index[1] = edge_index[1].unique(return_inverse=True)
+        
         data = HyperGraphData(
             x=self._data.x,
             edge_index=edge_index,
             edge_attr=self._data.edge_attr[idx],
+            x_struct=self._data.x_struct
         )
+
         return data
 
     def __len__(self) -> int:
@@ -170,4 +181,21 @@ class IMDBHypergraphDataset(CHLPBaseDataset):
 class PATENTHypergraphDataset(CHLPBaseDataset):
     GDRIVE_ID = "17FZAsGdMQMRZCWF6Vjjbz4F_NObwR3Cr"
     DATASET_NAME = "PATENT"
+
+class IMDBVillainHypergraphDataset(CHLPBaseDataset):
+    # GDRIVE_ID = "1h_Pe3ATRlXBt2Zhy6Bffb7RcCkk3PgfR"
+    DATASET_NAME = "IMDB_VILLAIN"
+
+class CourseraVillainHypergraphDataset(CHLPBaseDataset):
+    # GDRIVE_ID = "1h_Pe3ATRlXBt2Zhy6Bffb7RcCkk3PgfR"
+    DATASET_NAME = "COURSERA_VILLAIN"
+
+class ArxivVillainHypergraphDataset(CHLPBaseDataset):
+    # GDRIVE_ID = "1h_Pe3ATRlXBt2Zhy6Bffb7RcCkk3PgfR"
+    DATASET_NAME = "ARXIV_VILLAIN"
+
+class PatentVillainHypergraphDataset(CHLPBaseDataset):
+    # GDRIVE_ID = "1h_Pe3ATRlXBt2Zhy6Bffb7RcCkk3PgfR"
+    DATASET_NAME = "PATENT_VILLAIN"
+    
 torch.serialization.add_safe_globals([HyperGraphData])

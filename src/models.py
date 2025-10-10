@@ -1,4 +1,5 @@
 from torch_geometric.nn import HypergraphConv, TransformerConv
+import torch_geometric
 import torch.nn as nn
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score, roc_curve
@@ -7,134 +8,8 @@ from .utils import negative_sampling, sensivity_specificity_cutoff, alpha_beta_n
 from pytorch_lightning import LightningModule
 from torchmetrics.aggregation import RunningMean
 from torch.nn.functional import normalize
-from torch_geometric.nn import HypergraphConv, SoftmaxAggregation, MinAggregation, MulAggregation
-
-# class NewModelSemantic(nn.Module):
-#     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
-#         super(NewModelSemantic, self).__init__()
-
-#         self.dropout = nn.Dropout(0.3)
-#         self.activation = nn.LeakyReLU()
-
-#         self.n_sem_norm = nn.LayerNorm(in_channels)
-#         self.n_sem_proj = nn.Sequential(
-#             nn.Linear(in_channels, hidden_channels),
-#         )
-
-#         self.aggr = MinAggregation()
-#         self.linear = nn.Linear(hidden_channels, out_channels)
-
-#     def forward(self, x, x_e, edge_index):
-#         x = normalize(x, p=2, dim=1)
-#         x = self.n_sem_norm(x)
-#         x = self.n_sem_proj(x)
-#         x = self.activation(x)
-        
-#         x = self.aggr(x[edge_index[0]], edge_index[1])
-#         x = self.linear(x)
-#         return x
-
-# class NewLLMn_LLMe(nn.Module):    
-#     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
-#         super(NewLLMn_LLMe, self).__init__()
-
-#         self.dropout = nn.Dropout(0.3)
-#         self.activation = nn.LeakyReLU()
-
-#         self.in_proj = nn.Linear(in_channels, hidden_channels)
-#         self.e_norm = nn.LayerNorm(in_channels)
-#         self.e_proj = nn.Linear(in_channels, hidden_channels)
-
-#         self.num_layers = num_layers
-
-#         self.aggr = MinAggregation()
-#         self.edge_fusion = nn.Linear(hidden_channels * 2, hidden_channels)
-#         self.linear = nn.Linear(hidden_channels, out_channels)
-
-#     def forward(self, x, x_e, edge_index):
-#         x = torch.nn.functional.normalize(x, p=2, dim=1)
-#         x = self.in_proj(x)
-#         x = self.activation(x)
-#         x = self.dropout(x)
-
-#         x_e = torch.nn.functional.normalize(x_e, p=2, dim=1)
-#         x_e = self.e_norm(x_e)
-#         x_e = self.e_proj(x_e)
-#         x_e = self.activation(x_e)
-#         x_e = self.dropout(x_e)
-
-#         x_aggr = self.aggr(x[edge_index[0]], edge_index[1])
-#         x_e_fused = self.edge_fusion(torch.cat([x_aggr, x_e], dim=1))
-#         x = self.linear(x_e_fused)
-#         return x, x_aggr, x_e_fused
-
-# class Struct_LLMn(nn.Module):
-#     def __init__(self, num_nodes, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
-#         super(Struct_LLMn, self).__init__()
-
-#         self.x_struct = torch.randn(num_nodes, in_channels)
-
-#         self.dropout = nn.Dropout(0.3)
-#         self.activation = nn.LeakyReLU()
-#         self.in_norm = nn.LayerNorm(in_channels)
-#         self.in_proj = nn.Linear(in_channels, hidden_channels)
-
-#         self.n_sem_norm = nn.LayerNorm(in_channels)
-#         self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
-
-#         for i in range(num_layers):
-#             setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
-#             setattr(self, f"hgconv_{i}", HypergraphConv(
-#                 hidden_channels,
-#                 hidden_channels,
-#                 use_attention=False,
-#                 concat=False,
-#                 heads=4
-#             ))
-#             setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
-
-#         self.num_layers = num_layers
-#         self.aggr = MinAggregation()
-#         self.node_fusion = nn.Sequential(
-#             nn.LayerNorm(hidden_channels * 2),
-#             nn.Linear(hidden_channels * 2, hidden_channels),
-#             nn.LeakyReLU(),
-#             nn.LayerNorm(hidden_channels),
-#         )
-        
-#         self.linear = nn.Sequential(
-#             nn.Linear(hidden_channels, hidden_channels),
-#             nn.LeakyReLU(),
-#             nn.Linear(hidden_channels, hidden_channels),
-#             nn.LeakyReLU(),
-#             nn.Linear(hidden_channels, out_channels)
-#         )
-
-#     def forward(self, x, x_e, edge_index):
-#         x_struct = self.x_struct.to(x.device)
-#         x_struct = x_struct[torch.unique(edge_index[0])]
-#         x_struct = normalize(x_struct, p=2, dim=1)
-#         x_struct = self.in_proj(x_struct)
-#         x_struct = self.activation(x_struct)
-#         x_struct = self.dropout(x_struct)
-
-#         x = normalize(x, p=2, dim=1)
-#         x = self.n_sem_proj(x)
-#         x = self.activation(x)
-#         x = self.dropout(x)
-
-#         for i in range(self.num_layers):
-#             n_norm = getattr(self, f"n_norm_{i}")
-#             hgconv = getattr(self, f"hgconv_{i}")
-#             skip = getattr(self, f"skip_struct_{i}")
-
-#             x_struct = n_norm(x_struct)
-#             x_struct = self.activation(hgconv(x_struct, edge_index)) + skip(x_struct)
-        
-#         x = self.node_fusion(torch.cat([x_struct, x], dim=1))
-#         x = self.aggr(x[edge_index[0]], edge_index[1])
-#         x = self.linear(x)
-#         return x
+from torch_geometric.nn import HypergraphConv, MinAggregation, MeanAggregation, MaxAggregation
+from torch_geometric.nn.norm import GraphNorm
 
 class ModelBaseline(nn.Module):    
     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 1):
@@ -146,7 +21,7 @@ class ModelBaseline(nn.Module):
         self.in_proj = nn.Linear(in_channels, hidden_channels)
 
         for i in range(num_layers):
-            setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -188,7 +63,7 @@ class ModelEdge(nn.Module):
         self.e_proj = nn.Linear(in_channels, hidden_channels)
 
         for i in range(num_layers):
-            setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}_llm", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -199,7 +74,7 @@ class ModelEdge(nn.Module):
             ))
             setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
 
-            setattr(self, f"n_norm_{i}_llm_d", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}_llm_d", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm_d", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -263,7 +138,7 @@ class ModelNodeSem(nn.Module):
         self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
 
         for i in range(num_layers):
-            setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}_llm", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -312,7 +187,7 @@ class SemanticStructModel(nn.Module):
         self.n_sem_proj = nn.Linear(in_channels, hidden_channels)
 
         for i in range(num_layers):
-            setattr(self, f"n_norm_{i}", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -322,7 +197,7 @@ class SemanticStructModel(nn.Module):
             ))
             setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
 
-            setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}_llm", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -426,9 +301,9 @@ class FullModel(nn.Module):
                 heads=4,
                 attention_mode="node"
             ))
-            setattr(self, f"skip_struct_{i}", nn.Linear(hidden_channels, hidden_channels))
+            setattr(self, f"skip_struct_{i}", GraphNorm(hidden_channels, hidden_channels))
 
-            setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}_llm", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -439,7 +314,7 @@ class FullModel(nn.Module):
             ))
             setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
 
-            setattr(self, f"n_norm_{i}_llm_d", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}_llm_d", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm_d", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -532,7 +407,7 @@ class LLMNLLMEModel(nn.Module):
         self.e_proj = nn.Linear(in_channels, hidden_channels)
 
         for i in range(num_layers):
-            setattr(self, f"n_norm_{i}_llm", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}_llm", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -543,7 +418,7 @@ class LLMNLLMEModel(nn.Module):
             ))
             setattr(self, f"skip_{i}", nn.Linear(hidden_channels, hidden_channels))
 
-            setattr(self, f"n_norm_{i}_llm_d", nn.LayerNorm(hidden_channels))
+            setattr(self, f"n_norm_{i}_llm_d", GraphNorm(hidden_channels))
             setattr(self, f"hgconv_{i}_llm_d", HypergraphConv(
                 hidden_channels,
                 hidden_channels,
@@ -593,6 +468,178 @@ class LLMNLLMEModel(nn.Module):
         x = self.edge_fusion(torch.cat([x, x_e], dim=1))
         x = self.linear(x)
         return x
+from torch_geometric.utils import softmax 
+
+class NodeHyperedgeAttention(nn.Module):
+    def __init__(self, node_dim, edge_dim, hidden_dim=None, num_heads=4):
+        super().__init__()
+        if hidden_dim is None:
+            hidden_dim = node_dim
+        self.num_heads = num_heads
+        self.hidden_dim = hidden_dim
+
+        self.q_proj = nn.Linear(node_dim, hidden_dim)
+        self.k_proj = nn.Linear(edge_dim, hidden_dim)
+        self.v_proj = nn.Linear(edge_dim, hidden_dim)
+
+        self.out_proj = nn.Linear(hidden_dim, node_dim)
+
+    def forward(self, x_node, x_edge, edge_index):
+        src, dst = edge_index
+
+        Q = self.q_proj(x_node)
+        K = self.k_proj(x_edge)
+        V = self.v_proj(x_edge)
+
+        head_dim = self.hidden_dim // self.num_heads
+
+        Q = Q.view(Q.size(0), self.num_heads, head_dim)
+        K = K.view(K.size(0), self.num_heads, head_dim)
+        V = V.view(V.size(0), self.num_heads, head_dim)
+
+        Q_neighbors = Q[src]
+        K_neighbors = K[dst]
+        V_neighbors = V[dst]
+
+        attn_scores = (Q_neighbors * K_neighbors).sum(dim=-1) / (head_dim ** 0.5)
+        attn_weights = softmax(attn_scores, src) 
+
+        attn_weights = attn_weights.unsqueeze(-1)
+        out_messages = attn_weights * V_neighbors
+
+        out_node = torch.zeros_like(Q)
+        out_node.index_add_(0, src, out_messages)
+
+        out_node = out_node.view(x_node.size(0), -1)
+        out_node = self.out_proj(out_node)
+
+        out_node = out_node + x_node
+        return out_node
+
+import pickle as pkl
+from torch_geometric.nn.aggr import SetTransformerAggregation
+class TestModel(nn.Module):
+    def __init__(self, num_nodes, in_channels, hidden_channels, out_channels):
+        super().__init__()
+        self.dropout = nn.Dropout(0.3)
+        self.activation = nn.Tanh()
+
+        #node
+        self.linear_node = nn.Linear(in_channels, hidden_channels)
+        self.norm_node = nn.LayerNorm(hidden_channels)
+        self.hgcn_llm = HypergraphConv(hidden_channels, hidden_channels, use_attention=False)
+        self.graph_norm_llm = GraphNorm(hidden_channels)
+
+        self.hgcn_llm_2 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False, heads=4, attention_mode="node", concat=False)
+        self.graph_norm_llm_2 = GraphNorm(hidden_channels)
+
+        #edge
+        self.linear_edge = nn.Linear(in_channels, hidden_channels)
+        self.norm_edge = nn.LayerNorm(hidden_channels)
+
+        #struct
+        self.linear_struct = nn.Linear(768, hidden_channels)
+        self.norm_struct = nn.LayerNorm(hidden_channels)
+        self.hgcn1 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False)
+        self.graph_norm1 = GraphNorm(hidden_channels)
+
+        self.hgcn2 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False, heads=4, attention_mode="node", concat=False)
+        self.graph_norm2 = GraphNorm(hidden_channels)
+
+        # Attention and classification
+        self.attention_fusion = NodeHyperedgeAttention(hidden_channels, hidden_channels)
+        self.aggr_min = SetTransformerAggregation(hidden_channels, heads=4)
+
+        self.node_fusion = nn.Linear(hidden_channels * 2, hidden_channels)
+        self.norm_fusion = GraphNorm(hidden_channels)
+        
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_channels * 2, hidden_channels),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_channels, out_channels)
+        )
+
+    def forward(self, x, x_struct, x_e, edge_index):
+        #Refine node features
+        x = self.dropout(x)
+        x = self.linear_node(x)
+        x = self.activation(x)
+        x = self.norm_node(x)
+
+        #Refine edge features
+        x_e = self.dropout(x_e)
+        x_e = self.linear_edge(x_e)
+        x_e = self.activation(x_e)
+        x_e = self.norm_edge(x_e)
+
+        #on node llm
+        res_llm = x
+        x = self.hgcn_llm(x, edge_index)
+        x = self.activation(x)
+        x = self.graph_norm_llm(x) + res_llm
+
+        res_llm_2 = x
+        x = self.hgcn_llm_2(x, edge_index, hyperedge_attr=x_e)
+        x = self.activation(x)
+        x = self.graph_norm_llm_2(x) + res_llm_2
+
+        #Refine struct
+        x_struct = self.dropout(x_struct)
+        x_struct = self.linear_struct(x_struct)
+        x_struct = self.activation(x_struct)
+        x_struct = self.norm_struct(x_struct)
+
+        #Start
+        res = x_struct
+        x_struct = self.hgcn1(x_struct, edge_index)
+        x_struct = self.activation(x_struct)
+        x_struct = self.graph_norm1(x_struct)
+        x_struct = x_struct + res
+
+        res2 = x_struct
+        x_struct = self.hgcn2(x_struct, edge_index, hyperedge_attr=x_e)
+        x_struct = self.activation(x_struct)
+        x_struct = self.graph_norm2(x_struct)
+        x_struct = x_struct + res2
+
+        #node fusion
+        x = torch.cat([x, x_struct], dim=1)
+        x = self.node_fusion(x)
+        x = self.activation(x)
+        x = self.norm_fusion(x)
+        x = self.attention_fusion(x, x_e, edge_index)
+        
+        #Classification
+        x = self.aggr_min(x[edge_index[0]], edge_index[1])
+        x = torch.cat([x, x_e], dim=1)
+        x = self.dropout(x)
+        x = self.mlp(x)
+
+        return x
+
+class MLP(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super().__init__()
+        self.dropout = nn.Dropout(0.3)
+        self.activation = nn.LeakyReLU()
+        self.aggr = MinAggregation()
+
+        self.norm = nn.LayerNorm(hidden_channels)
+        self.linear = nn.Linear(in_channels, hidden_channels)
+
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_channels, out_channels)
+        )
+
+    def forward(self, x, x_e, edge_index):
+        x = self.dropout(x)
+        x = self.activation(self.linear(x))
+        x = self.norm(x)
+
+        x = self.aggr(x[edge_index[0]], edge_index[1])
+        x = self.mlp(x)
+
+        return x
 
 class LitCHLPModel(LightningModule):
     def __init__(self, model, lr=1e-4):
@@ -606,10 +653,10 @@ class LitCHLPModel(LightningModule):
         self.test_preds = []
         self.test_targets = []
         self.metric = RunningMean(window=11)
-    
+
     def training_step(self, batch, batch_idx):
         h = alpha_beta_negative_sampling(batch)
-        y_pred = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = self.model(h.x, h.x_struct, h.edge_attr, h.edge_index)
         y_pred = y_pred.flatten()
         bce_loss = self.criterion(y_pred, h.y.flatten())
 
@@ -619,7 +666,7 @@ class LitCHLPModel(LightningModule):
     
     def validation_step(self, batch, batch_idx):
         h = alpha_beta_negative_sampling(batch)
-        y_pred = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = self.model(h.x, h.x_struct, h.edge_attr, h.edge_index)
         y_pred = y_pred.flatten()
         bce_loss = self.criterion(y_pred, h.y.flatten())
 
@@ -654,7 +701,7 @@ class LitCHLPModel(LightningModule):
     
     def test_step(self, batch, batch_idx):
         h = alpha_beta_negative_sampling(batch)
-        y_pred = self.model(h.x, h.edge_attr, h.edge_index)
+        y_pred = self.model(h.x, h.x_struct, h.edge_attr, h.edge_index)
         y_pred = torch.sigmoid(y_pred).flatten()
 
         self.test_preds.append(y_pred.detach().cpu())

@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve
-from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, PATENTHypergraphDataset, train_test_split, collate_fn, HyperGraphData
+from .datasets import CHLPBaseDataset, IMDBHypergraphDataset, COURSERAHypergraphDataset, ARXIVHypergraphDataset, PATENTHypergraphDataset, train_test_split, collate_fn, HyperGraphData, IMDBVillainHypergraphDataset, CourseraVillainHypergraphDataset, ArxivVillainHypergraphDataset, PatentVillainHypergraphDataset
 from typing import Tuple
 from torch.utils.data import DataLoader
 import random
@@ -101,7 +101,8 @@ def alpha_beta_negative_sampling(h: HyperGraphData, alpha=0.8, beta=3):
         edge_index=final_edge_index,
         edge_attr = final_edge_attr,
         y=torch.tensor(y, dtype=torch.float).flatten(),
-        num_nodes=real_nodes.shape[0]
+        num_nodes=real_nodes.shape[0],
+        x_struct=h.x_struct
     ).to(h.x.device)
 
     return h_
@@ -137,33 +138,41 @@ def load_and_prepare_data(
         "IMDB": IMDBHypergraphDataset,
         "COURSERA": COURSERAHypergraphDataset,
         "ARXIV": ARXIVHypergraphDataset,
-        "PATENT": PATENTHypergraphDataset
+        "PATENT": PATENTHypergraphDataset,
+        "IMDB_VILLAIN": IMDBVillainHypergraphDataset,
+        "COURSERA_VILLAIN": CourseraVillainHypergraphDataset,
+        "ARXIV_VILLAIN": ArxivVillainHypergraphDataset,
+        "PATENT_VILLAIN": PatentVillainHypergraphDataset,
     }
 
     if dataset_name not in datasets:
         raise NotImplementedError(f"Dataset '{dataset_name}' non supportato")
 
-    if mode == "baseline":
-        transform_fn = transform_baseline
-    elif mode == "nodes":
-        transform_fn = transform_node_features
-    elif mode == "just_node_semantic":
-        transform_fn = transform_node_features
-    elif mode == "edges":
-        transform_fn = transform_edge_features
-    elif mode == "struct_llm_n":
-        transform_fn = None
-    elif mode == "just_edge_semantic":
-        transform_fn = None
-    elif mode == "full":
-        transform_fn = None
-    elif mode == "node_semantic_node_structure":
-        transform_fn = None
-    elif mode == "node_llm_edge_llm":
-        transform_fn = None
-    else:
-        raise NotImplementedError(f"Mode '{mode}' non supportato")
+    # if mode == "baseline":
+    #     transform_fn = transform_baseline
+    # elif mode == "nodes":
+    #     transform_fn = transform_node_features
+    # elif mode == "just_node_semantic":
+    #     transform_fn = transform_node_features
+    # elif mode == "edges":
+    #     transform_fn = transform_edge_features
+    # elif mode == "struct_llm_n":
+    #     transform_fn = None
+    # elif mode == "just_edge_semantic":
+    #     transform_fn = None
+    # elif mode == "full":
+    #     transform_fn = None
+    # elif mode == "node_semantic_node_structure":
+    #     transform_fn = None
+    # elif mode == "node_llm_edge_llm":
+    #     transform_fn = None
+    # elif mode == "villain":
+    #     transform_fn = transform_node_features
+    # else:
+    #     raise NotImplementedError(f"Mode '{mode}' non supportato")
 
+    transform_fn = None
+    
     dataset = datasets[dataset_name](
         "./data",
         pre_transform=pre_transform,
