@@ -34,23 +34,23 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Step 1: Estrai i testi
-# testi = estrai_contenuti_chat_completion("prova/data2/batch_684c649ada9c81908ee599badf4cae76_output.jsonl")  # o batch_results_nodes.jsonl
+testi = estrai_contenuti_chat_completion("prova/data2/batch_684c649ada9c81908ee599badf4cae76_output.jsonl")  # o batch_results_nodes.jsonl
 
-# # Step 2: Crea file embeddings
-# crea_file_batch_embeddings(testi, "prova/data2/batch_embeddings_edges.jsonl")
+# Step 2: Crea file embeddings
+crea_file_batch_embeddings(testi, "prova/data2/batch_embeddings_edges.jsonl")
 
-# # Step 3: Carica file ed esegui batch
-# with open("prova/data2/batch_embeddings_edges.jsonl", "rb") as f:
-#     file_batch = client.files.create(file=f, purpose="batch")
+# Step 3: Carica file ed esegui batch
+with open("prova/data2/batch_embeddings_edges.jsonl", "rb") as f:
+    file_batch = client.files.create(file=f, purpose="batch")
 
-# batch = client.batches.create(
-#     input_file_id=file_batch.id,
-#     endpoint="/v1/embeddings",
-#     completion_window="24h",
-#     metadata={"description": "embedding dei contenuti GPT per edges"}
-# )
+batch = client.batches.create(
+    input_file_id=file_batch.id,
+    endpoint="/v1/embeddings",
+    completion_window="24h",
+    metadata={"description": "embedding dei contenuti GPT per edges"}
+)
 
-# print("Batch embeddings creato con ID:", batch.id)
+print("Batch embeddings creato con ID:", batch.id)
 
 # Estrai i contenuti dal file originale
 testi = estrai_contenuti_chat_completion("prova/data2/batch_684c649cbfc48190978e948a37531db5_output.jsonl")

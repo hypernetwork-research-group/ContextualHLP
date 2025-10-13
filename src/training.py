@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeSem, SemanticStructModel, LLMNLLMEModel, TestModel, MLP
+from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeSem, SemanticStructModel, LLMNLLMEModel, MLP
 import torch
 from pytorch_lightning.loggers import TensorBoardLogger
 from .complete_models import *
@@ -18,6 +18,9 @@ def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
         lightning_model = LitCHLPModel(model)
     elif mode == "node_semantic_node_structure":
         model = NodeSemanticAndStructureModel(in_channels, 512, 1)
+        lightning_model = LitCHLPModel(model)
+    elif mode == "node_edges":
+        model = NodeAndHyperedges(in_channels, 512, 1)
         lightning_model = LitCHLPModel(model)
     elif mode == "full":
         model = FullModel(in_channels=in_channels, hidden_channels=512, out_channels=1)
@@ -49,7 +52,7 @@ def run_training(lightning_model: LitCHLPModel,
     )
 
     trainer = Trainer(
-        max_epochs=300,
+        max_epochs=500,
         accelerator=accelerator,
         devices=devices,
         log_every_n_steps=100,

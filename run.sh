@@ -6,8 +6,8 @@ EPOCHS=250
 BATCH_SIZE=128
 NUM_WORKERS=8
 
-DATASETS=("ARXIV")
-MODES=("baseline" "nodes" "node_semantic_node_structure" "full") #"baseline" "nodes" "edges" "full" "node_semantic_node_structure" "just_node_semantic" "just_edge_semantic" "struct_llm_n" "node_llm_edge_llm"
+DATASETS=("PATENT" "IMDB" "ARXIV")
+MODES=("baseline" "nodes" "node_semantic_node_structure" "node_edges" "full") #"baseline" "nodes" "edges" "full" "node_semantic_node_structure" "just_node_semantic" "just_edge_semantic" "struct_llm_n" "node_llm_edge_llm"
 
 for dataset in "${DATASETS[@]}"; do
   for mode in "${MODES[@]}"; do

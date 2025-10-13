@@ -2,9 +2,8 @@ from torch_geometric.nn import HypergraphConv
 import torch.nn as nn
 import torch
 from torch_geometric.nn import HypergraphConv
-from torch_geometric.nn.norm import GraphNorm
 from torch_geometric.utils import softmax 
-
+from torch_geometric.nn.norm import GraphNorm
 
 class Classifier(nn.Module):
     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, dropout: float = 0.0):
@@ -28,13 +27,15 @@ class StructuralFeatureRefiner(nn.Module):
         self.activation = activation
 
         self.linear = nn.Linear(in_channels, hidden_channels)
-        self.norm = nn.LayerNorm(hidden_channels)
+        self.norm = GraphNorm(hidden_channels)
 
         self.hgcn1 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False)
         self.graph_norm1 = GraphNorm(hidden_channels)
+        self.skip1 = nn.Linear(hidden_channels, hidden_channels)
 
         self.hgcn2 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False, heads=4, attention_mode="node", concat=False)
         self.graph_norm2 = GraphNorm(hidden_channels)
+        self.skip2 = nn.Linear(hidden_channels, hidden_channels)
     
     def forward(self, x, edge_index):
         x = self.dropout(x)
@@ -46,13 +47,13 @@ class StructuralFeatureRefiner(nn.Module):
         x = self.hgcn1(x, edge_index)
         x = self.activation(x)
         x = self.graph_norm1(x)
-        x = x + res1
+        x = x + self.skip1(res1)
 
         res2 = x
         x = self.hgcn2(x, edge_index)
         x = self.activation(x)
         x = self.graph_norm2(x)
-        x = x + res2
+        x = x + self.skip2(res2)
 
         return x
 
@@ -64,15 +65,17 @@ class SemanticFeatureRefiner(nn.Module):
         self.activation = activation
 
         self.linear = nn.Linear(in_channels, hidden_channels)
-        self.norm = nn.LayerNorm(hidden_channels)
+        self.norm = GraphNorm(hidden_channels)
 
         self.hgcn1 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False)
         self.graph_norm1 = GraphNorm(hidden_channels)
+        self.skip1 = nn.Linear(hidden_channels, hidden_channels)
 
         self.hgcn2 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False, heads=4, attention_mode="node", concat=False)
         self.graph_norm2 = GraphNorm(hidden_channels)
+        self.skip2 = nn.Linear(hidden_channels, hidden_channels)
     
-    def forward(self, x, x_e, edge_index):
+    def forward(self, x, edge_index):
         x = self.dropout(x)
         x = self.linear(x)
         x = self.activation(x)
@@ -82,26 +85,26 @@ class SemanticFeatureRefiner(nn.Module):
         x = self.hgcn1(x, edge_index)
         x = self.activation(x)
         x = self.graph_norm1(x)
-        x = x + res1
+        x = x + self.skip1(res1)
 
         res2 = x
-        x = self.hgcn2(x, edge_index, hyperedge_attr=x_e)
+        x = self.hgcn2(x, edge_index)
         x = self.activation(x)
         x = self.graph_norm2(x)
-        x = x + res2
+        x = x + self.skip2(res2)
 
         return x
 
 class SemanticHyperedgeRefiner(nn.Module):
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, dropout: int = 0.0, activation: nn.Module =nn.LeakyReLU()):
+    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, dropout: int = 0.0, activation: nn.Module = nn.LeakyReLU()):
         super(SemanticHyperedgeRefiner, self).__init__()
         
         self.activation = activation
         self.dropout = nn.Dropout(dropout)
 
         self.linear_edge = nn.Linear(in_channels, hidden_channels)
-        self.norm_edge = nn.LayerNorm(hidden_channels)
-    
+        self.norm_edge = GraphNorm(hidden_channels)
+
     def forward(self, x):
         x = self.dropout(x)
         x = self.linear_edge(x)
