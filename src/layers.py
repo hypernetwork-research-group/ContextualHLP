@@ -1,19 +1,14 @@
 from torch_geometric.nn import HypergraphConv
 import torch.nn as nn
 import torch
-from torch_geometric.nn import HypergraphConv
 from torch_geometric.utils import softmax 
-from torch_geometric.nn.norm import GraphNorm
 
 class Classifier(nn.Module):
     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, dropout: float = 0.0):
         super(Classifier, self).__init__()
 
         self.sequential = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(in_channels, hidden_channels),
-            nn.LeakyReLU(),
-            nn.Linear(hidden_channels, out_channels)
+            nn.Linear(in_channels, out_channels)
         )
     
     def forward(self, x):
@@ -27,15 +22,11 @@ class StructuralFeatureRefiner(nn.Module):
         self.activation = activation
 
         self.linear = nn.Linear(in_channels, hidden_channels)
-        self.norm = GraphNorm(hidden_channels)
+        self.norm = nn.LayerNorm(hidden_channels)
 
         self.hgcn1 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False)
-        self.graph_norm1 = GraphNorm(hidden_channels)
+        self.graph_norm1 = nn.LayerNorm(hidden_channels)
         self.skip1 = nn.Linear(hidden_channels, hidden_channels)
-
-        self.hgcn2 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False, heads=4, attention_mode="node", concat=False)
-        self.graph_norm2 = GraphNorm(hidden_channels)
-        self.skip2 = nn.Linear(hidden_channels, hidden_channels)
     
     def forward(self, x, edge_index):
         x = self.dropout(x)
@@ -48,12 +39,6 @@ class StructuralFeatureRefiner(nn.Module):
         x = self.activation(x)
         x = self.graph_norm1(x)
         x = x + self.skip1(res1)
-
-        res2 = x
-        x = self.hgcn2(x, edge_index)
-        x = self.activation(x)
-        x = self.graph_norm2(x)
-        x = x + self.skip2(res2)
 
         return x
 
@@ -65,15 +50,11 @@ class SemanticFeatureRefiner(nn.Module):
         self.activation = activation
 
         self.linear = nn.Linear(in_channels, hidden_channels)
-        self.norm = GraphNorm(hidden_channels)
+        self.norm = nn.LayerNorm(hidden_channels)
 
         self.hgcn1 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False)
-        self.graph_norm1 = GraphNorm(hidden_channels)
+        self.graph_norm1 = nn.LayerNorm(hidden_channels)
         self.skip1 = nn.Linear(hidden_channels, hidden_channels)
-
-        self.hgcn2 = HypergraphConv(hidden_channels, hidden_channels, use_attention=False, heads=4, attention_mode="node", concat=False)
-        self.graph_norm2 = GraphNorm(hidden_channels)
-        self.skip2 = nn.Linear(hidden_channels, hidden_channels)
     
     def forward(self, x, edge_index):
         x = self.dropout(x)
@@ -87,12 +68,6 @@ class SemanticFeatureRefiner(nn.Module):
         x = self.graph_norm1(x)
         x = x + self.skip1(res1)
 
-        res2 = x
-        x = self.hgcn2(x, edge_index)
-        x = self.activation(x)
-        x = self.graph_norm2(x)
-        x = x + self.skip2(res2)
-
         return x
 
 class SemanticHyperedgeRefiner(nn.Module):
@@ -103,7 +78,7 @@ class SemanticHyperedgeRefiner(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         self.linear_edge = nn.Linear(in_channels, hidden_channels)
-        self.norm_edge = GraphNorm(hidden_channels)
+        self.norm_edge = nn.LayerNorm(hidden_channels)
 
     def forward(self, x):
         x = self.dropout(x)
@@ -158,3 +133,25 @@ class NodeHyperedgeAttention(nn.Module):
 
         out_node = out_node + x_node
         return out_node
+
+class FusionWithMHA(nn.Module):
+    def __init__(self, dim, num_heads=4, num_layers=1):
+        super().__init__()
+        self.layers = nn.ModuleList([
+            nn.TransformerEncoderLayer(
+                d_model=dim,
+                nhead=num_heads,
+                batch_first=True,
+            )
+            for _ in range(num_layers)
+        ])
+        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.out = nn.Linear(dim, 1)
+
+    def forward(self, struct_emb, llm_node_emb, llm_edge_emb):
+        x = torch.stack([struct_emb, llm_node_emb, llm_edge_emb], dim=1) # (batch, seq_len=3, dim)
+        for layer in self.layers:
+            x = layer(x)
+        x_pooled = x.mean(dim=1)
+        logit = self.out(x_pooled).squeeze(-1)
+        return logit

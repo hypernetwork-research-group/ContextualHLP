@@ -11,6 +11,8 @@ from .complete_models import *
 
 def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
     if mode == "baseline":
+        # model = ModelGraph(in_channels, 512, 1)
+        # lightning_model = LitCHLPModel(model)
         model = StructureModel(in_channels, 512, 1)
         lightning_model = LitCHLPModel(model)
     elif mode == "nodes":
@@ -37,7 +39,7 @@ def run_training(lightning_model: LitCHLPModel,
                  mode: str,
                  dataset: str,
                  max_epochs: int = 1200,
-                 early_stopping_patience: int = 100,
+                 early_stopping_patience: int = 50,
                  devices: int = 1,
                  accelerator: str = 'gpu'):
     
@@ -51,24 +53,24 @@ def run_training(lightning_model: LitCHLPModel,
         check_on_train_epoch_end=False
     )
 
-    trainer = Trainer(
-        max_epochs=500,
-        accelerator=accelerator,
-        devices=devices,
-        log_every_n_steps=100,
-    )
+    # trainer = Trainer(
+    #     max_epochs=10,
+    #     accelerator=accelerator,
+    #     devices=devices,
+    #     log_every_n_steps=100,
+    # )
 
-    tuner = Tuner(trainer)
-    lr_finder = tuner.lr_find(
-        lightning_model,
-        train_dataloaders=train_loader,
-        val_dataloaders=val_loader,
-    )
-    lr_finder.plot(suggest=True).show()
-    new_lr = lr_finder.suggestion()
-    print(f"Learning rate suggerito dal LR finder: {new_lr}")
+    # tuner = Tuner(trainer)
+    # lr_finder = tuner.lr_find(
+    #     lightning_model,
+    #     train_dataloaders=train_loader,
+    #     val_dataloaders=val_loader,
+    # )
+    # lr_finder.plot(suggest=True).show()
+    # new_lr = lr_finder.suggestion()
+    # print(f"Learning rate suggerito dal LR finder: {new_lr}")
 
-    lightning_model.lr = new_lr
+    # lightning_model.lr = new_lr
 
     trainer = Trainer(
         max_epochs=max_epochs,
