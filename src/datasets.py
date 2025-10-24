@@ -178,6 +178,9 @@ class IMDBHypergraphDataset(CHLPBaseDataset):
     GDRIVE_ID = "1ghUYiyNDvbSF4VKhgMS0akjSL0Wei0uU"
     DATASET_NAME = "IMDB"
 
+class IMDBHypergraphDataset2(CHLPBaseDataset):
+    GDRIVE_ID = "19vdcTseOsVUDJzANzqcblPFJnfEQpJUk"
+    DATASET_NAME = "IMDB2"
 class PATENTHypergraphDataset(CHLPBaseDataset):
     GDRIVE_ID = "17FZAsGdMQMRZCWF6Vjjbz4F_NObwR3Cr"
     DATASET_NAME = "PATENT"

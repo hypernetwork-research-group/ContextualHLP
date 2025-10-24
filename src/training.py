@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import LitCHLPModel, ModelBaseline, ModelEdge, ModelNodeSem, SemanticStructModel, LLMNLLMEModel, MLP
+from .models import LitCHLPModel, MLP, HNHN, HyperGCN
 import torch
 from pytorch_lightning.loggers import TensorBoardLogger
 from .complete_models import *
@@ -11,25 +11,23 @@ from .complete_models import *
 
 def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
     if mode == "baseline":
-        # model = ModelGraph(in_channels, 512, 1)
-        # lightning_model = LitCHLPModel(model)
         model = StructureModel(in_channels, 512, 1)
-        lightning_model = LitCHLPModel(model)
     elif mode == "nodes":
         model = SemanticModel(in_channels, 512, 1)
-        lightning_model = LitCHLPModel(model)
     elif mode == "node_semantic_node_structure":
         model = NodeSemanticAndStructureModel(in_channels, 512, 1)
-        lightning_model = LitCHLPModel(model)
     elif mode == "node_edges":
         model = NodeAndHyperedges(in_channels, 512, 1)
-        lightning_model = LitCHLPModel(model)
     elif mode == "full":
         model = FullModel(in_channels=in_channels, hidden_channels=512, out_channels=1)
-        lightning_model = LitCHLPModel(model)
     elif mode == "villain":
         model = MLP(128, 128, 1)
-        lightning_model = LitCHLPModel(model)
+    elif mode == "hnhn":
+        model = HNHN(in_channels=in_channels, hidden_channels=128, out_channels=1)
+    elif mode == "hypergcn":
+        model = HyperGCN(in_channels=in_channels, hidden_channels=128, out_channels=1)
+
+    lightning_model = LitCHLPModel(model)
 
     return lightning_model
 
@@ -39,7 +37,7 @@ def run_training(lightning_model: LitCHLPModel,
                  mode: str,
                  dataset: str,
                  max_epochs: int = 1200,
-                 early_stopping_patience: int = 50,
+                 early_stopping_patience: int = 100,
                  devices: int = 1,
                  accelerator: str = 'gpu'):
     
@@ -85,6 +83,7 @@ def run_training(lightning_model: LitCHLPModel,
 
 def run_test_and_save_results(model, test_loader, output_path="test_results.txt", device="cuda" if torch.cuda.is_available() else "cpu"):
     model.eval()
+    model.model.eval()
     model.to(device)
 
     trainer = Trainer(accelerator=device, logger=False, enable_checkpointing=False)
