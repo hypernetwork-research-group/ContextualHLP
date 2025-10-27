@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.tuner import Tuner
-from .models import LitCHLPModel, MLP, HNHN, HyperGCN
+from .models import LitCHLPModel, MLP, HNHN, HyperGCN, MyHGNNP
 import torch
 from pytorch_lightning.loggers import TensorBoardLogger
 from .complete_models import *
@@ -26,6 +26,11 @@ def create_model(in_channels: int, num_nodes: int, mode: str) -> LitCHLPModel:
         model = HNHN(in_channels=in_channels, hidden_channels=128, out_channels=1)
     elif mode == "hypergcn":
         model = HyperGCN(in_channels=in_channels, hidden_channels=128, out_channels=1)
+    elif mode == "HGNNP":
+        model = MyHGNNP(in_channels=in_channels, hidden_channels=128, out_channels=1)
+    elif mode == "basehgcn":
+        model = CompareHGCN(in_channels=in_channels, hidden_channels=512, out_channels=1)
+
 
     lightning_model = LitCHLPModel(model)
 

@@ -2,17 +2,12 @@
 
 # chmod +x run.sh
 
-EPOCHS=200
+EPOCHS=500
 BATCH_SIZE=128
 NUM_WORKERS=8
 
-# imdb ok
-# arxiv ok
-# patent no
-# coursera ok
-
-DATASETS=("PATENT" "COURSERA" "IMDB" "ARXIV") # "PATENT" "IMDB" "COURSERA" "ARXIV"
-MODES=("baseline" "full") #"hnhn" "villain" "baseline" "nodes" "node_semantic_node_structure" "node_edges" "full"
+DATASETS=("PATENT") # "PATENT" "IMDB" "COURSERA" "ARXIV"
+MODES=("baseline" "nodes" "node_semantic_node_structure" "node_edges" "full") #"hnhn" "villain" "baseline" "nodes" "node_semantic_node_structure" "node_edges" "full"
 
 for dataset in "${DATASETS[@]}"; do
   if dataset == "IMDB"; then
