@@ -2,11 +2,11 @@
 
 # chmod +x run.sh
 
-EPOCHS=500
+EPOCHS=300
 BATCH_SIZE=128
 NUM_WORKERS=8
 
-DATASETS=("PATENT") # "PATENT" "IMDB" "COURSERA" "ARXIV"
+DATASETS=("PATENT" "IMDB" "COURSERA" "ARXIV") # "PATENT" "IMDB" "COURSERA" "ARXIV"
 MODES=("baseline" "nodes" "node_semantic_node_structure" "node_edges" "full") #"hnhn" "villain" "baseline" "nodes" "node_semantic_node_structure" "node_edges" "full"
 
 for dataset in "${DATASETS[@]}"; do

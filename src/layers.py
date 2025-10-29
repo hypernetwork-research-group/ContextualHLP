@@ -198,54 +198,54 @@ class NodeHyperedgeAttention(MessagePassing):
 
         return x_node, x_edge
 
-class FusionWithMHA(nn.Module):
-    def __init__(self, dim, num_heads=4, num_layers=1, dropout=0.1):
-        super().__init__()
-        self.layers = nn.ModuleList([
-            nn.TransformerEncoderLayer(
-                d_model=dim,
-                nhead=num_heads,
-                batch_first=True,
-                dropout=dropout,
-                activation="relu",
-            ) for _ in range(num_layers)
-        ])
-        self.norm = nn.BatchNorm1d(dim)
-        self.out = nn.Linear(dim, dim)
-        self.temp = nn.Parameter(torch.tensor(1.0))
-        self.gate = nn.Sequential(
-            nn.Linear(dim * 2, dim),
-            nn.GELU(),
-            nn.Linear(dim, dim),
-            nn.Sigmoid()
-        )
+# class FusionWithMHA(nn.Module):
+#     def __init__(self, dim, num_heads=4, num_layers=1, dropout=0.1):
+#         super().__init__()
+#         self.layers = nn.ModuleList([
+#             nn.TransformerEncoderLayer(
+#                 d_model=dim,
+#                 nhead=num_heads,
+#                 batch_first=True,
+#                 dropout=dropout,
+#                 activation="relu",
+#             ) for _ in range(num_layers)
+#         ])
+#         self.norm = nn.BatchNorm1d(dim)
+#         self.out = nn.Linear(dim, dim)
+#         self.temp = nn.Parameter(torch.tensor(1.0))
+#         self.gate = nn.Sequential(
+#             nn.Linear(dim * 2, dim),
+#             nn.GELU(),
+#             nn.Linear(dim, dim),
+#             nn.Sigmoid()
+#         )
 
-    def forward(self, x, llm_edge_emb):
-        fused = torch.cat([x, llm_edge_emb], dim=-1)
-        gate = self.gate(fused)
-        x = gate * x + (1 - gate) * llm_edge_emb
-        x = x.unsqueeze(1)
-        for layer in self.layers:
-            x = layer(x)
-        x = self.norm(x.mean(dim=1))
-        return self.out(x / self.temp)
+#     def forward(self, x, llm_edge_emb):
+#         fused = torch.cat([x, llm_edge_emb], dim=-1)
+#         gate = self.gate(fused)
+#         x = gate * x + (1 - gate) * llm_edge_emb
+#         x = x.unsqueeze(1)
+#         for layer in self.layers:
+#             x = layer(x)
+#         x = self.norm(x.mean(dim=1))
+#         return self.out(x / self.temp)
 
-class GatedFusion(nn.Module):
-    def __init__(self, dim, dropout=0.3):
-        super().__init__()
-        self.gate = nn.Sequential(
-            nn.Linear(dim * 2, dim),
-            nn.Sigmoid()
-        )
-        self.proj = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(dim * 2, dim),
-            nn.Tanh(),
-            nn.BatchNorm1d(dim),
-            nn.Dropout(dropout)
-        )
+# class GatedFusion(nn.Module):
+#     def __init__(self, dim, dropout=0.3):
+#         super().__init__()
+#         self.gate = nn.Sequential(
+#             nn.Linear(dim * 2, dim),
+#             nn.Sigmoid()
+#         )
+#         self.proj = nn.Sequential(
+#             nn.Dropout(dropout),
+#             nn.Linear(dim * 2, dim),
+#             nn.Tanh(),
+#             nn.BatchNorm1d(dim),
+#             nn.Dropout(dropout)
+#         )
 
-    def forward(self, x1, x2):
-        g = self.gate(torch.cat([x1, x2], dim=-1))
-        out = g * x1 + (1 - g) * x2
-        return self.proj(torch.cat([out, g], dim=-1))
+#     def forward(self, x1, x2):
+#         g = self.gate(torch.cat([x1, x2], dim=-1))
+#         out = g * x1 + (1 - g) * x2
+#         return self.proj(torch.cat([out, g], dim=-1))
