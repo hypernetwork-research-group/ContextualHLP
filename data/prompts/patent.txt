@@ -1,0 +1,6 @@
+Node description:
+    Write a concise professional description of the USA patent creator {name_surname}, highlighting their academic background, research interests, 
+    and main areas of expertise. Exclude any references to specific patents or proprietary inventions.
+
+Hyperedge description:
+    Write a concise professional description of the patent, emphasizing its technological fields and application domains. Exclude any reference to its creator.

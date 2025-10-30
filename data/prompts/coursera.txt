@@ -1,0 +1,2 @@
+Node description:
+    Write a concise professional description of the Coursera trainer {name_surname}, highlighting their main areas of expertise. Exclude any references to specific courses.

@@ -1,0 +1,3 @@
+Node description:
+    Write a concise professional description of the scientific author {name_surname}, emphasizing their academic background, research interests, and primary fields of expertise. 
+    Exclude any references to specific publications or individual works.
